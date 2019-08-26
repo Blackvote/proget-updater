@@ -1,0 +1,12 @@
+﻿{
+  "SourceProget": {
+    "Address": "https://proget.netsrv.it:38443/",
+    "FeedName": "Neo",
+    "ApiKey": "ikvx7RRCAXXLTvJ-uxJw"
+  },
+  "DestProget": {
+    "Address": "https://pg.orpo.netsrv.pw/",
+    "FeedName": "Neo",
+    "ApiKey": "RezQyJmfcWxxCawMiy1g"
+  }
+}
