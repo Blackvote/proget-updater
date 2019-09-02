@@ -72,7 +72,7 @@ namespace updater
                         }
                         using (var fileStream = File.OpenRead($@"C:\temp\{p.Group}_{p.Name}_{ver}.upack"))
                         {
-                            _log.Information($"Копирую пакет {p.FullName} в {_programConfig.DestProGetUrl}");
+                            _log.Information($"Копирую пакет {p.FullName} {ver} в {_programConfig.DestProGetUrl}");
                             await DestFeed.UploadPackageAsync(fileStream);
                         }
                         
