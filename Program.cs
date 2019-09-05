@@ -27,9 +27,15 @@ namespace updater
                 Directory.CreateDirectory(@"C:\temp");
 
             programConfig = new ProgramConfig();
-
-            ConfigReader configReader = new ConfigReader(programConfig, log);
-
+            ConfigReader configReader;
+            try
+            {
+                configReader = new ConfigReader(programConfig, log);
+            }
+            catch(Exception e) {
+                log.Error("Ошибка при чтении файла конфигурации: {error}", e.Message);
+                Console.ReadLine();
+            }
             SelfUpdate selfUpdate = new SelfUpdate(programConfig, log);
 
             
