@@ -43,10 +43,17 @@ namespace updater
 
             //sync.check();
             while (true) {
-                Task.Run(async () => { await selfUpdate.IsUpdateNeeded(); }).GetAwaiter().GetResult();
-                Task.Run(async () => { await sync.check(); }).GetAwaiter().GetResult();
-                log.Information("Жду 60 секунд до следующей проверки");
-                Thread.Sleep(60000);
+                try
+                {
+                    Task.Run(async () => { await selfUpdate.IsUpdateNeeded(); }).GetAwaiter().GetResult();
+                    Task.Run(async () => { await sync.check(); }).GetAwaiter().GetResult();
+                    log.Information("Жду 60 секунд до следующей проверки");
+                    Thread.Sleep(60000);
+                }
+                catch (Exception e)
+                {
+                    log.Fatal("Что то пошло не так: {error}", e.Message);
+                }
             }
         }
 

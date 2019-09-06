@@ -111,7 +111,7 @@ namespace updater
                         td.Triggers.Add(new TimeTrigger(DateTime.Now + TimeSpan.FromMinutes(1)));
 
                         // Create an action that will launch Notepad whenever the trigger fires
-                        td.Actions.Add(new ExecAction(@"start /D F:\publish\ update.bat", null));
+                        td.Actions.Add(new ExecAction($@"start /D {Directory.GetCurrentDirectory()}\ update.bat", null));
 
                         // Register the task in the root folder
                         ts.RootFolder.RegisterTaskDefinition(@"Self-update", td);
