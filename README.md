@@ -61,4 +61,4 @@ https://dotnet.microsoft.com/download/dotnet-core/thank-you/sdk-2.2.207-windows-
 
 ```
 
-Так же для ApiKey необходимо выставить права на "Feed Management API" настройках ProGet(administration/api-keys)
+Так же для ApiKey необходимо выставить права на "Feed Management API" настройках ProGet(administration/api-keys) только для синхронизации фидов типа NuGet, эта функция доступна только в PrщGet 5.2.* и выше
