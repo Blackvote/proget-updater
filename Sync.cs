@@ -34,7 +34,7 @@ namespace updater
                 _log.Information("Синхронизируем фид {DestinationFeed} прогета {DestinationProGet} с фидом {SourceFeedName} прогета {SourceProGet}", feedConfig.DestProGetFeedName, feedConfig.DestProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetUrl);
                 var sourceType = GetFeedType(feedConfig.SourceProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetApiKey);
                 var destType = GetFeedType(feedConfig.DestProGetUrl, feedConfig.DestProGetFeedName, feedConfig.DestProGetApiKey);
-                if(sourceType == destType) { 
+                if(sourceType.ToLower() == destType.ToLower()) { 
                     switch (sourceType.ToLower())
                     {
                         case "universal":
