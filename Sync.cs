@@ -35,12 +35,12 @@ namespace updater
                 var sourceType = GetFeedType(feedConfig.SourceProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetApiKey);
                 var destType = GetFeedType(feedConfig.DestProGetUrl, feedConfig.DestProGetFeedName, feedConfig.DestProGetApiKey);
                 if(sourceType == destType) { 
-                    switch (sourceType)
+                    switch (sourceType.ToLower())
                     {
-                        case "Universal":
+                        case "universal":
                             await SyncUniversalFeedsTask(feedConfig);
                             break;
-                        case "NuGet":
+                        case "nuget":
                             SyncNuGetFeeds(feedConfig);
                             break;
                     }
@@ -247,7 +247,7 @@ namespace updater
             {
                 dynamic resp = JObject.Parse(response.Content);
                 var feedType = resp.feedType.ToString();
-                _log.Information("Определили тип фида {ProGetUrl}/{FeedName} как {FeedType}", progetUrl, feedName, feedType);
+                _log.Information("Определили тип фида {ProGetUrl}/{FeedName} как {FeedType}", progetUrl, feedName, feedType.ToString().ToLower());
                 return feedType;
             }
             catch (Exception e)
