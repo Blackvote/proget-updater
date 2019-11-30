@@ -8,51 +8,46 @@ using System.Threading;
 using Serilog.Formatting.Compact;
 using System.Diagnostics;
 using System.Reflection;
+using System.Text;
 
 namespace updater
 {
     class Program
     {
-
-        public static ProgramConfig programConfig;
-        public static ILogger log;
-
+        private static ILogger _log;
+        private static ConfigReader _configReader;
+        
         static void Main(string[] args)
         {
-
+            Console.OutputEncoding = Encoding.UTF8;
             InitLogger();
-
-            log.Information("Старт приложения, версия: {ver}", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
+            _log = Log.Logger;
+            _log.Information("Start application, version: {ver}", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
             if (!Directory.Exists(@"C:\temp"))
                 Directory.CreateDirectory(@"C:\temp");
 
-            programConfig = new ProgramConfig();
-            ConfigReader configReader;
             try
             {
-                configReader = new ConfigReader(programConfig, log);
+                _configReader = new ConfigReader();
             }
             catch(Exception e) {
-                log.Error("Ошибка при чтении файла конфигурации: {error}", e.Message);
+                _log.Error("Error reading configuration: {error}", e.Message);
                 Console.ReadLine();
             }
-            SelfUpdate selfUpdate = new SelfUpdate(programConfig, log);
+            SelfUpdate selfUpdate = new SelfUpdate();
 
-            
-            Sync sync = new Sync(programConfig, log);
-
-            //sync.check();
+            Sync sync = new Sync();
             while (true) {
                 try
                 {
                     Task.Run(async () => { await selfUpdate.IsUpdateNeeded(); }).GetAwaiter().GetResult();
-                    Task.Run(async () => { await sync.check(); }).GetAwaiter().GetResult();
-                    log.Information("Жду 60 секунд до следующей проверки");
+                    Task.Run(async () => { await sync.CheckTask();}).GetAwaiter().GetResult();
+                    _log.Information("Waiting 60 second");
                     Thread.Sleep(60000);
                 }
                 catch (Exception e)
                 {
-                    log.Fatal("Что то пошло не так: {error}", e.Message);
+                    _log.Fatal("Something went wrong: {error}", e.Message);
                 }
             }
         }
@@ -63,14 +58,17 @@ namespace updater
         {
             var formatter = new CompactJsonFormatter();
 
-            string LogPath = $"{Directory.GetCurrentDirectory()}/Logs/";
+            string logPath = $"{Directory.GetCurrentDirectory()}/Logs/";
 
-            log = new LoggerConfiguration()
-            .WriteTo.Console()
-            .Enrich.WithProperty("Version", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion)
-            .WriteTo.File(path: LogPath,
-                formatter: formatter, rollingInterval: RollingInterval.Hour)
-            .CreateLogger();
+            var logger = new LoggerConfiguration()
+                .WriteTo.Console()
+                .Enrich.WithProperty("Version",
+                    FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion)
+                .Enrich.WithProperty("ProgramName", "NeoUpdater")
+                .WriteTo.File(path: logPath,
+                    formatter: formatter, rollingInterval: RollingInterval.Hour);
+            logger = logger.WriteTo.Seq("http://127.0.0.1:5341");
+            Log.Logger = logger.CreateLogger();
         }
 
     }

@@ -24,20 +24,18 @@ namespace updater
         public ILogger _log;
 
 
-        public SelfUpdate(ProgramConfig config, ILogger log)
+        public SelfUpdate()
         {
-            _config = config;
-            _log = log;
-                       
+            _config = ProgramConfig.Instance;
+            _log = Log.Logger.ForContext("ClassType", GetType());
         }
-
 
         public async System.Threading.Tasks.Task IsUpdateNeeded()
         {
 
-            SecureString apiKey = new NetworkCredential("", _config.SourceProGetApiKey).SecurePassword;
+            SecureString apiKey = new NetworkCredential("", _config.ProGetConfigs[0].SourceProGetApiKey).SecurePassword;
 
-            var endpoint = new UniversalFeedEndpoint(new Uri($"{_config.SourceProGetUrl}/upack/Updater"), "api", apiKey);
+            var endpoint = new UniversalFeedEndpoint(new Uri($"{_config.ProGetConfigs[0].SourceProGetUrl}/upack/Updater"), "api", apiKey);
 
             var feed = new UniversalFeedClient(endpoint);
 
@@ -45,7 +43,7 @@ namespace updater
 
             if ((packages[0].LatestVersion).ToString() != FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion)
             {
-                _log.Information("Нашел новую версию: {newVersion}, скачиваю и обновляюсь", packages[0].LatestVersion);
+                _log.Information("Found new version: {newVersion}, download and update", packages[0].LatestVersion);
 
                 try
                 {
@@ -57,10 +55,10 @@ namespace updater
                 }
                 catch (Exception e)
                 {
-                    _log.Error("Свалился с ошибкой: {reason}", e.Message);
+                    _log.Error("Got error while save new version: {reason}", e.Message);
                 }
 
-                _log.Information("Успешно скачал пакет версии {ver}, устанавливаю", packages[0].LatestVersion);
+                _log.Information("Successfully download {ver}, installing", packages[0].LatestVersion);
                 try
                 {
                     using (var package = new UniversalPackage($"{packages[0].LatestVersion}.upack"))
@@ -70,17 +68,18 @@ namespace updater
                 }
                 catch (Exception e)
                 {
-                    _log.Information("Не удалось распаковать архив по причине: {reason}", e.Message);
+                    _log.Information("Unable to unzip the archive due to: {reason}", e.Message);
                 }
-                _log.Information("Успешно распаковал версию {ver}, обновляюсь", packages[0].LatestVersion);
+                _log.Information("Successfully unzip archive {ver}, updating", packages[0].LatestVersion);
 
-                _log.Information("Создаю файл для self-update(update.bat)");
+                _log.Information("Create file to self-update(update.bat)");
                 try
                 {
 
                     string BatTxt = $"taskkill /im updater.exe\r\n" +
                         $"cd {Directory.GetCurrentDirectory()}\r\n" +
                         $"sleep 10\r\n" +
+                        $"powershell -Command Remove-Item ./{FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion} -Recurse \r\n" +
                         $"powershell -Command Remove-Item ./*.* -Exclude config.json,update.bat,{packages[0].LatestVersion} \r\n" +
                         $"sleep 5\r\n" +
                         $"powershell -Command Copy-Item {packages[0].LatestVersion}\\*.* .\\ -Exclude config.json\r\n" +
@@ -91,14 +90,14 @@ namespace updater
                         sw.Write(BatTxt);
                     }
 
-                    _log.Information("Успешно создал файл update.bat");
+                    _log.Information("Successfully create file update.bat");
                 }
                 catch (Exception e)
                 {
-                    _log.Error("Не получилось записать файл для self-update, по причиние: {reason}", e.Message);
+                    _log.Error("Error writing file for selfupdate, reason: {reason}", e.Message);
                 }
 
-                _log.Information("Создаю задание в планировщике задач");
+                _log.Information("Create task in Schedule(Task Manager)");
                 try
                 {
                     using (TaskService ts = new TaskService())
@@ -119,15 +118,15 @@ namespace updater
                 }
                 catch (Exception e)
                 {
-                    _log.Error("Не получилось создать задание в планировщике задач, по причине: {reason}", e.Message);
+                    _log.Error("Error create task in Schedule, reason: {reason}", e.Message);
                 }
 
-                _log.Information("Ожидаю выполнения schedule-task для обновления");
+                _log.Information("Wait for schedule-task for update");
                 Thread.Sleep(180000);
             }
             else
             {
-                _log.Information("Установлена последняя версия");
+                _log.Information("Latest version is already installed");
             }
 
         }

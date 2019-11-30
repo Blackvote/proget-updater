@@ -1,12 +1,25 @@
-﻿{
+﻿[{
   "SourceProget": {
     "Address": "https://proget.netsrv.it:38443/",
-    "FeedName": "Neo",
-    "ApiKey": "ikvx7RRCAXXLTvJ-uxJw"
+    "FeedName": "seqplug",
+    "ApiKey": "etoapiKey"
   },
   "DestProget": {
     "Address": "https://pg.orpo.netsrv.pw/",
-    "FeedName": "Neo",
-    "ApiKey": "RezQyJmfcWxxCawMiy1g"
+    "FeedName": "testnuget",
+    "ApiKey": "etotosheApiKey"
+  }
+},
+{
+  "SourceProget": {
+    "Address": "https://proget.netsrv.it:38443/",
+    "FeedName": "Test",
+    "ApiKey": "iEtoApiKey"
+  },
+  "DestProget": {
+    "Address": "https://pg.orpo.netsrv.pw/",
+    "FeedName": "Test",
+    "ApiKey": "apiKey?"
   }
 }
+]
