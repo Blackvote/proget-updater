@@ -91,6 +91,18 @@ namespace updater
                             await destFeed.UploadPackageAsync(fileStream);
                         }
 
+                        string file = $@"C:\temp\{p.Group}_{p.Name}_{ver}.upack";
+                        _log.Information("start delete {file}, first foreach", file);
+                        try
+                        {
+                            File.Delete(file);
+                            _log.Information("смогли удалить файл {upack}", file);
+                        }
+                        catch
+                        {
+                            _log.Information("не смогли удалить файл {upack}", file);
+                        }
+
                     }
 
                 }
@@ -116,15 +128,24 @@ namespace updater
                                     await destFeed.UploadPackageAsync(fileStream);
                                 }
 
+                                //string file = $@"C:\temp\{p.Group}_{p.Name}_{ver}.upack";
+                                //_log.Information("start delete {file}, second foreach", file);
+                                //try
+                                //{
+                                //    File.Delete(file);
+                                //    _log.Information("смогли удалить файл {upack}", file);
+                                //}
+                                //catch
+                                //{
+                                //    _log.Information("не смогли удалить файл {upack}", file);
+                                //}
                             }
                         }
                         _log.Information("Not found new version {Group}/{Name} in {ProGetUrl}/{FeedName}", p.Group, p.Name, proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
 
                     }
                 }
-
             }
-
         }
 
         private void SyncNuGetFeeds(ProGetConfig proGetConfig)
