@@ -1,17 +1,11 @@
 ﻿using Inedo.UPack.Net;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Security;
-using System.Text;
-using System.Threading.Tasks;
-using Serilog.Core;
-using Logger = Serilog.Core.Logger;
 using Serilog;
 using System.IO;
-using Inedo.UPack;
 using Inedo.UPack.Packaging;
 using Microsoft.Win32.TaskScheduler;
 using System.Threading;

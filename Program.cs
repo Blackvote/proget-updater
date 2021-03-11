@@ -15,9 +15,9 @@ namespace updater
     class Program
     {
         private static ILogger _log;
-        private static ConfigReader _configReader;
-        
-        static void Main(string[] args)
+        internal static ConfigReader ConfigReader { get; set; }
+
+        static void Main()
         {
             Console.OutputEncoding = Encoding.UTF8;
             InitLogger();
@@ -28,7 +28,7 @@ namespace updater
 
             try
             {
-                _configReader = new ConfigReader();
+                ConfigReader = new ConfigReader();
             }
             catch(Exception e) {
                 _log.Error("Error reading configuration: {error}", e.Message);

@@ -1,4 +1,11 @@
-**/obj/*
 **/bin/*
 **/Debug/*
+**/obj/*
 **/output/*
+**/topush/*
+**/.vs/*
+*.bak
+*.orig
+**/.suo
+*.user
+_ReSharper.Caches/*
