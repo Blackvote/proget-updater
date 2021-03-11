@@ -35,7 +35,12 @@ namespace updater
 
             var packages = await feed.ListPackagesAsync("", null);
 
-            if ((packages[0].LatestVersion).ToString() != FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion)
+            _log.Information("Current version: {currentVersion}", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
+            _log.Information("Latest version in repository: {latestVersion}", packages[0].LatestVersion);
+            Version currentVersion = new Version(FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
+            Version latestVersion = new Version(packages[0].LatestVersion.ToString());
+
+            if (currentVersion.CompareTo(latestVersion) < 0) // currentVersion is less than latestVersion. See https://docs.microsoft.com/en-us/dotnet/api/system.version.compareto?view=netcore-3.1
             {
                 _log.Information("Found new version: {newVersion}, download and update", packages[0].LatestVersion);
 
