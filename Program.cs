@@ -52,8 +52,6 @@ namespace updater
             }
         }
 
-
-
         public static void InitLogger()
         {
             var formatter = new CompactJsonFormatter();

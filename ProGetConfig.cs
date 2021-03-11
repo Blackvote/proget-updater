@@ -7,35 +7,35 @@ namespace updater
     public class ProGetConfig
     {
 
-        //ProGetArea FROM
+        // ProGetArea FROM (source)
         /// <summary>
-        /// Url to ProGet
+        /// Url to source ProGet
         /// </summary>
         public string SourceProGetUrl { get; internal set; }
 
         /// <summary>
-        /// ApiKey to ProGet
+        /// ApiKey to source ProGet
         /// </summary>
         public string SourceProGetApiKey { get; internal set; }
 
         /// <summary>
-        /// ProGet feed name(teamName)
+        /// Feed name (teamName) in source ProGet
         /// </summary>
         public string SourceProGetFeedName { get; internal set; }
 
-        //ProGetArea TO
+        // ProGetArea TO (destination)
         /// <summary>
-        /// Url to ProGet
+        /// Url to destination ProGet
         /// </summary>
         public string DestProGetUrl { get; internal set; }
 
         /// <summary>
-        /// ApiKey to ProGet
+        /// ApiKey to destination ProGet
         /// </summary>
         public string DestProGetApiKey { get; internal set; }
 
         /// <summary>
-        /// ProGet feed name(teamName)
+        /// Feed name (teamName) in destination ProGet
         /// </summary>
         public string DestProGetFeedName { get; internal set; }
 

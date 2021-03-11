@@ -193,10 +193,10 @@ namespace updater
 
         private Dictionary<string, string> GetNugetFeedPackageList(string progetUrl, string feedName, string apiKey)
         {
-            Dictionary<string,string> packageList = new Dictionary<string, string>();
-            var client = new RestClient(progetUrl);
             // ODATA (v2), used: https://proget.netsrv.it:38443/nuget/seqplug/Packages?$format=json
             // JSON-LD (v3) API, disabled for feed by-default: https://proget.netsrv.it:38443/nuget/seqplug/v3/index.json
+            Dictionary<string,string> packageList = new Dictionary<string, string>();
+            var client = new RestClient(progetUrl);
             var request = new RestRequest($"nuget/{feedName}/Packages?$format=json", Method.GET);
             client.Authenticator = new HttpBasicAuthenticator("api", apiKey);
             var response = client.Execute(request);
@@ -420,10 +420,10 @@ namespace updater
 
         private string GetFeedType(string progetUrl, string feedName, string apiKey)
         {
-            var client = new RestClient(progetUrl);
             // Feed Management API: https://proget.netsrv.it:38443/api/management/feeds/get/Neo
             // Native API: https://proget.netsrv.it:38443/api/json/Feeds_GetFeed?Feed_Name=Neo
             // FeedType_Name
+            var client = new RestClient(progetUrl);
             var request = new RestRequest($"api/management/feeds/get/{feedName}", Method.GET); // TODO Replace RestClient+RestRequest to HttpClient+PostAsync
             request.AddHeader("X-ApiKey", apiKey);
             var response = client.Execute(request);
