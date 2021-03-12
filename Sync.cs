@@ -226,14 +226,16 @@ namespace updater
                 if (!Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
                 var tempFile = Path.GetFullPath(dir + fileName);
-                var writer = File.OpenWrite(tempFile);
-                request.ResponseWriter = responseStream =>
+                using (var writer = File.OpenWrite(tempFile))
                 {
-                    using (responseStream)
+                    request.ResponseWriter = responseStream =>
                     {
-                        responseStream.CopyTo(writer);
-                    }
-                };
+                        using (responseStream)
+                        {
+                            responseStream.CopyTo(writer);
+                        }
+                    };
+                }
                 var response = client.DownloadData(request);
             }
             catch (Exception e)
