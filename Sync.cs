@@ -80,7 +80,7 @@ namespace updater
                 var search = await destFeed.SearchPackagesAsync(p.Name);
                 if (!search.Any(x => x.FullName == p.FullName))
                 {
-                    _log.Information("Not found {Group}/{Name} in {dProGetUrl}feeds/{dFeedName}, copy from {sProGetUrl}feeds/{sFeedName}", p.Group, p.Name, destFeed.Endpoint.Uri, proGetConfig.DestProGetFeedName, proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
+                    _log.Information("Not found {Group}/{Name} in {dProGetUrl}feeds/{dFeedName}, copy from {sProGetUrl}feeds/{sFeedName}", p.Group, p.Name, proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
 
                     foreach (var ver in p.AllVersions)
                     {
