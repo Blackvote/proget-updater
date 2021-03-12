@@ -1,6 +1,6 @@
 {
   "group": "utils",
   "name": "updater",
-  "version": "1.2.1",
-  "description": "Восстановлена синхронизация nuget-пакетов"
+  "version": "1.2.2",
+  "description": "Сохранение временных файлов для nuget-пакетов перенесено из ./packages в C:/temp/updater"
 }

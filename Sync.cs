@@ -17,7 +17,7 @@ namespace updater
 {
     public class Sync
     {
-        private const string TempDir = @"C:\temp\";
+        private const string TempDir = @"C:\temp\updater\";
         private readonly ProgramConfig _programConfig;
         private readonly ILogger _log;
         public Sync()
@@ -74,6 +74,8 @@ namespace updater
             var destFeed = new UniversalFeedClient(destEndpoint);
 
             var packages = await sourceFeed.ListPackagesAsync("", null);
+            var dir = $"{TempDir}";
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             foreach (var p in packages)
             {
                 _log.Information("Target package {Group}/{name}", p.Group, p.Name);
@@ -81,10 +83,9 @@ namespace updater
                 if (!search.Any(x => x.FullName == p.FullName))
                 {
                     _log.Information("Not found {Group}/{Name} in {dProGetUrl}feeds/{dFeedName}, copy from {sProGetUrl}feeds/{sFeedName}", p.Group, p.Name, proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
-
                     foreach (var ver in p.AllVersions)
                     {
-                        string file = $@"{TempDir}{p.Group}_{p.Name}_{ver}.upack";
+                        var file = $@"{dir}{p.Group}_{p.Name}_{ver}.upack";
                         using (var packageStream = await sourceFeed.GetPackageStreamAsync(p.FullName, ver))
                         using (var fileStream = File.Create(file))
                         {
@@ -118,12 +119,11 @@ namespace updater
                         {
                             if (!pack.AllVersions.Contains(ver))
                             {
-                                string file = $@"{TempDir}{p.Group}_{p.Name}_{ver}.upack";
+                                var file = $@"{dir}{p.Group}_{p.Name}_{ver}.upack";
                                 using (var packageStream = await sourceFeed.GetPackageStreamAsync(p.FullName, ver))
                                 using (var fileStream = File.Create(file))
                                 {
                                     await packageStream.CopyToAsync(fileStream);
-
                                 }
                                 using (var fileStream = File.OpenRead(file))
                                 {
@@ -220,8 +220,7 @@ namespace updater
             client.Authenticator = new HttpBasicAuthenticator("api", apiKey);
             try
             {
-                var dir = AppDomain.CurrentDomain.BaseDirectory + "packages/"; // TODO: use constant TempDir
-                // FIXME string dir = $"{TempDir}nuget-packages/";
+                var dir = $"{TempDir}";
                 var fileName = $"{packageName}_{packageVersion}.nupkg";
                 if (!Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
@@ -249,10 +248,10 @@ namespace updater
             try
             {
                 var stringToFeed = progetUrl + $"nuget/{feedName}";
-                // TODO: use constant TempDir
-                var stringToPackage = AppDomain.CurrentDomain.BaseDirectory + "packages/" + packageName + "_" +
-                                      packageVersion + ".nupkg";
-                ExecuteDotnetCommand(stringToPackage, stringToFeed, apiKey);
+                var dir = $"{TempDir}";
+                var fileName = $"{packageName}_{packageVersion}.nupkg";
+                var fullFileName = dir + fileName;
+                ExecuteDotnetCommand(fullFileName, stringToFeed, apiKey);
             }
             catch (Exception e)
             {
@@ -346,9 +345,9 @@ namespace updater
         {
             // http://proget-server/vsix/{feedName}/downloads/{Package_Id}/{packageVersion}
             // https://proget.netsrv.it:38443/vsix/NeoGallery/downloads/MobiTemplateWizard.cae77667-8ddc-4040-acf7-f7491071af30/1.0.1
-            string dir = $"{TempDir}{Package_Id}/{packageVersion}/";
-            string fileName = $"{packageName}.vsix";
-            if (!Directory.Exists(dir))
+            var dir = $"{TempDir}{Package_Id}/{packageVersion}/";
+            var fileName = $"{packageName}.vsix";
+            if (!Directory.Exists(dir)) 
                 Directory.CreateDirectory(dir);
             var fullFileName = Path.GetFullPath(dir + fileName);
             try
@@ -374,9 +373,9 @@ namespace updater
         private async Task PushVsixPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string Package_Id, string packageVersion)
         {
             // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/vsix/NeoGallery -InFile.\MobiTemplateWizard.vsix - Headers @{ "X-ApiKey" = "XXXXXXXXXXXXXX"}
-            string dir = $"{TempDir}{Package_Id}/{packageVersion}/";
-            string fileName = $"{packageName}.vsix";
-            string fullFileName = dir + fileName;
+            var dir = $"{TempDir}{Package_Id}/{packageVersion}/";
+            var fileName = $"{packageName}.vsix";
+            var fullFileName = dir + fileName;
             FileInfo fileInfo = new FileInfo(fullFileName);
             long fileSize = fileInfo.Length;
             _log.Information($"Выкладываю vsix-пакет {Package_Id} версии {packageVersion} в {progetUrl}feed/{feedName}");
@@ -402,7 +401,7 @@ namespace updater
                 }
                 catch (Exception e)
                 {
-                    _log.Information(e, "Не получилось удалить временный файл '{fullFileName}'", fullFileName);
+                    _log.Warning(e, "Не получилось удалить временный файл '{fullFileName}'", fullFileName);
                 }
                 try
                 {
@@ -411,7 +410,7 @@ namespace updater
                 }
                 catch (Exception e)
                 {
-                    _log.Information(e, "Не получилось удалить временный каталог '{dir}'", dir);
+                    _log.Warning(e, "Не получилось удалить временный каталог '{dir}'", dir);
                 }
             }
             catch (Exception e)
@@ -494,6 +493,29 @@ namespace updater
                 version = $"{version}.{revisionNumber}";
             }
             return version;
+        }
+
+        public void CleanUpDirs()
+        {
+            var dirsList = new List<string>() {
+                AppDomain.CurrentDomain.BaseDirectory + "packages", // old place for temporary nuget-packages
+                $"{TempDir}" // current place for temporary packages (upack, nuget, vsix)
+            };
+            foreach (var dir in dirsList)
+            {
+                if (Directory.Exists(dir))
+                {
+                    _log.Information($"Cleanup: remove directory '{dir}'");
+                    try
+                    {
+                        Directory.Delete(dir, true);
+                    }
+                    catch (Exception e)
+                    {
+                        _log.Error(e, $"Can not delete directory '{dir}'!");
+                    }
+                }
+            }
         }
     }
 }

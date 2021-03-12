@@ -23,8 +23,6 @@ namespace updater
             InitLogger();
             _log = Log.Logger;
             _log.Information("Start application, version: {ver}", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
-            if (!Directory.Exists(@"C:\temp"))
-                Directory.CreateDirectory(@"C:\temp");
 
             try
             {
@@ -40,6 +38,7 @@ namespace updater
             while (true) {
                 try
                 {
+                    sync.CleanUpDirs();
                     Task.Run(async () => { await selfUpdate.IsUpdateNeeded(); }).GetAwaiter().GetResult();
                     Task.Run(async () => { await sync.CheckTask();}).GetAwaiter().GetResult();
                     _log.Information("Waiting 60 second");
