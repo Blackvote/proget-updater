@@ -220,23 +220,23 @@ namespace updater
             client.Authenticator = new HttpBasicAuthenticator("api", apiKey);
             try
             {
-                string dir = AppDomain.CurrentDomain.BaseDirectory + "packages/"; // TODO: use constant TempDir
+                var dir = AppDomain.CurrentDomain.BaseDirectory + "packages/"; // TODO: use constant TempDir
                 // FIXME string dir = $"{TempDir}nuget-packages/";
-                string fileName = $"{packageName}_{packageVersion}.nupkg";
+                var fileName = $"{packageName}_{packageVersion}.nupkg";
                 if (!Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
                 var tempFile = Path.GetFullPath(dir + fileName);
-                using (var writer = File.OpenWrite(tempFile))
+                using (var fileStream = File.Create(tempFile))
                 {
                     request.ResponseWriter = responseStream =>
                     {
                         using (responseStream)
                         {
-                            responseStream.CopyTo(writer);
+                            responseStream.CopyTo(fileStream);
                         }
                     };
+                    var response = client.DownloadData(request);
                 }
-                var response = client.DownloadData(request);
             }
             catch (Exception e)
             {
