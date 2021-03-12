@@ -1,0 +1,6 @@
+{
+  "group": "utils",
+  "name": "updater",
+  "version": "1.2.1",
+  "description": "Синхронизация скачивания/чтения nuget-пакетов"
+}
