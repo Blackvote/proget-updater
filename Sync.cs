@@ -44,7 +44,7 @@ namespace updater
                             SyncNuGetFeeds(feedConfig);
                             break;
                         case "vsix":
-                            await SyncVsixFeedsAsync(feedConfig);
+                            await SyncVsixFeedsTask(feedConfig);
                             break;
                         default:
                             _log.Error("Фид имеет неизвестный тип '{sourceType}', синхронизация невозможна!", sourceType.ToLower());
@@ -239,7 +239,7 @@ namespace updater
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не получилось скачать nuget-пакет {PackageName}/{PackageVersion}", packageName, packageVersion);
+                _log.Error(e, $"Не получилось скачать nuget-пакет {packageName}/{packageVersion}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key");
             }
         }
 
@@ -255,7 +255,7 @@ namespace updater
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не получилось загрузить nuget-пакет {PackageName}/{PackageVersion} в {ProGetUrl}feeds/{ProGetFeed}", packageName, packageVersion, progetUrl, feedName);
+                _log.Error(e, $"Не получилось загрузить nuget-пакет {packageName}/{packageVersion} в {progetUrl}feeds/{feedName}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key");
             }
         }
 
@@ -274,7 +274,7 @@ namespace updater
         }
 
 
-        private async Task SyncVsixFeedsAsync(ProGetConfig proGetConfig)
+        private async Task SyncVsixFeedsTask(ProGetConfig proGetConfig)
         {
             var sourcePackageList = await GetVsixFeedPackageListAsync(@"источника", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey);
             var destPackageList = await GetVsixFeedPackageListAsync(@"назначения", proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey);
@@ -397,7 +397,7 @@ namespace updater
                 try
                 {
                     File.Delete(fullFileName);
-                    _log.Verbose("Удалили временный файл {fullFileName}", fullFileName);
+                    _log.Verbose("Удалили временный файл '{fullFileName}'", fullFileName);
                 }
                 catch (Exception e)
                 {
@@ -406,7 +406,7 @@ namespace updater
                 try
                 {
                     Directory.Delete(dir);
-                    _log.Verbose("Удалили временный каталог {dir}", dir);
+                    _log.Verbose("Удалили временный каталог '{dir}'", dir);
                 }
                 catch (Exception e)
                 {
