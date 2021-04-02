@@ -1,6 +1,6 @@
 {
   "group": "utils",
   "name": "updater",
-  "version": "1.3.0",
-  "description": "Целевая платформа .NET Core 3.1 вместо 2.2, для запуска не требуется устанавливать SDK"
+  "version": "1.3.1",
+  "description": "Теперь везде используем библиотеку HttpClient вместо RestClient. Получаем Feed Type через Native API. Привелегия Feed Management API больше не нужна для API-key"
 }

@@ -32,8 +32,8 @@ namespace updater
             foreach (var feedConfig in _programConfig.ProGetConfigs)
             {
                 _log.Information("Синхронизируем фид {DestinationFeed} прогета {DestinationProGet} с фидом {SourceFeedName} прогета {SourceProGet}", feedConfig.DestProGetFeedName, feedConfig.DestProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetUrl);
-                var sourceType = GetFeedType(feedConfig.SourceProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetApiKey);
-                var destType = GetFeedType(feedConfig.DestProGetUrl, feedConfig.DestProGetFeedName, feedConfig.DestProGetApiKey);
+                var sourceType = await GetFeedTypeAsync(feedConfig.SourceProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetApiKey);
+                var destType = await GetFeedTypeAsync(feedConfig.DestProGetUrl, feedConfig.DestProGetFeedName, feedConfig.DestProGetApiKey);
                 if(sourceType.ToLower() == destType.ToLower()) { 
                     switch (sourceType.ToLower())
                     {
@@ -156,7 +156,7 @@ namespace updater
             try
             {
                 _log.Information("Пытаюсь получить список nuget-пакетов из прогета {SourceProGet}feeds/{SourceFeed}", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
-                sourcePackageList = GetNugetFeedPackageList(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey);
+                sourcePackageList = await GetNugetFeedPackageListAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey);
                 _log.Information("Получил список пакетов из {SourceProGet}feeds/{SourceFeed}", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
             }
             catch (Exception e)
@@ -169,7 +169,7 @@ namespace updater
                 _log.Information(
                     "Пытаюсь получить список nuget-пакетов из прогета назначения для сравнения {DestinationProGet}feeds/{DestinationFeed}",
                     proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName);
-                destPackageList = GetNugetFeedPackageList(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey);
+                destPackageList = await GetNugetFeedPackageListAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey);
             }
             catch (Exception e)
             {
@@ -183,7 +183,7 @@ namespace updater
                 if (!destPackageList.ContainsKey(packageDynamic.Id.ToString() + "_" + packageDynamic.Version.ToString()))
                 {
                     _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestinationProGet}feeds/{DestinationFeed}, выкачиваю и выкладываю.", packageDynamic.Id.ToString(), packageDynamic.Version.ToString(), proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName);
-                    GetNugetPackage(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, 
+                    await GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, 
                         packageDynamic.Id.ToString(), packageDynamic.Version.ToString());
                     await PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, 
                         packageDynamic.Id.ToString(), packageDynamic.Version.ToString());
@@ -191,17 +191,21 @@ namespace updater
             }
         }
 
-        private Dictionary<string, string> GetNugetFeedPackageList(string progetUrl, string feedName, string apiKey)
+        private async Task<Dictionary<string, string>> GetNugetFeedPackageListAsync(string progetUrl, string feedName, string apiKey)
         {
             // ODATA (v2), used: https://proget.netsrv.it:38443/nuget/seqplug/Packages?$format=json
             // JSON-LD (v3) API, disabled for feed by-default: https://proget.netsrv.it:38443/nuget/seqplug/v3/index.json
-            Dictionary<string,string> packageList = new Dictionary<string, string>();
-            var client = new RestClient(progetUrl);
-            var request = new RestRequest($"nuget/{feedName}/Packages?$format=json", Method.GET);
-            client.Authenticator = new HttpBasicAuthenticator("api", apiKey);
-            var response = client.Execute(request);
-            _log.Verbose("response.Content = '{0}'", response.Content);
-            dynamic resp = JObject.Parse(response.Content);
+            Dictionary<string, string> packageList = new Dictionary<string, string>();
+            var client = new HttpClient
+            {
+                BaseAddress = new Uri(progetUrl)
+            };
+            client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
+            var response = await client.GetAsync($@"nuget/{feedName}/Packages?$format=json"); // Feed API
+            response.EnsureSuccessStatusCode();
+            var strBody = await response.Content.ReadAsStringAsync();
+            _log.Debug("response.Content = '{0}'", strBody);
+            dynamic resp = JObject.Parse(strBody);
             foreach (var package in resp.d.results)
             {
                 _log.Information("Нашел nuget-пакет {PackageName} версии {PackageVersion} в {ProGetUrl}feeds/{ProGetFeed}", package.Id.ToString(), package.Version.ToString(), progetUrl, feedName);
@@ -211,31 +215,26 @@ namespace updater
             return packageList;
         }
 
-        private void GetNugetPackage(string progetUrl, string feedName, string apiKey, string packageName, string packageVersion)
+        private async Task GetNugetPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string packageVersion)
         {
             // http://proget-server/api/v2/package/{feedName}/{packageName}/{optional-version}
             // https://proget.netsrv.it:38443/nuget/seqplug/package/Seq.App.Exporter/1.2.3
-            var client = new RestClient(progetUrl);
-            var request = new RestRequest($"nuget/{feedName}/package/{packageName}/{packageVersion}", Method.GET);
-            client.Authenticator = new HttpBasicAuthenticator("api", apiKey);
+            var dir = $"{TempDir}";
+            var fileName = $"{packageName}_{packageVersion}.nupkg";
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            var fullFileName = Path.GetFullPath(dir + fileName);
             try
             {
-                var dir = $"{TempDir}";
-                var fileName = $"{packageName}_{packageVersion}.nupkg";
-                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                var tempFile = Path.GetFullPath(dir + fileName);
-                using (var fileStream = File.Create(tempFile))
+                var client = new HttpClient
                 {
-                    request.ResponseWriter = responseStream =>
-                    {
-                        using (responseStream)
-                        {
-                            responseStream.CopyTo(fileStream);
-                        }
-                    };
-                    var response = client.DownloadData(request);
-                    fileStream.Flush();
-                    fileStream.Close();
+                    BaseAddress = new Uri(progetUrl)
+                };
+                client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
+                using (var response = await client.GetAsync($"nuget/{feedName}/package/{packageName}/{packageVersion}")) // Feed API
+                using (var fileStream = File.Create(fullFileName))
+                {
+                    await response.Content.CopyToAsync(fileStream);
+                    response.EnsureSuccessStatusCode();
                 }
             }
             catch (Exception e)
@@ -360,8 +359,7 @@ namespace updater
             // https://proget.netsrv.it:38443/vsix/NeoGallery/downloads/MobiTemplateWizard.cae77667-8ddc-4040-acf7-f7491071af30/1.0.1
             var dir = $"{TempDir}{Package_Id}/{packageVersion}/";
             var fileName = $"{packageName}.vsix";
-            if (!Directory.Exists(dir)) 
-                Directory.CreateDirectory(dir);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             var fullFileName = Path.GetFullPath(dir + fileName);
             try
             {
@@ -371,9 +369,9 @@ namespace updater
                 };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
                 using (var response = await client.GetAsync($"vsix/{feedName}/downloads/{Package_Id}/{packageVersion}")) // Feed API
-                using (var fs = File.Create(fullFileName))
+                using (var fileStream = File.Create(fullFileName))
                 {
-                    await response.Content.CopyToAsync(fs);
+                    await response.Content.CopyToAsync(fileStream);
                     response.EnsureSuccessStatusCode();
                 }
             }
@@ -432,26 +430,33 @@ namespace updater
             }
         }
 
-        private string GetFeedType(string progetUrl, string feedName, string apiKey)
+        private async Task<string> GetFeedTypeAsync(string progetUrl, string feedName, string apiKey)
         {
             // Feed Management API: https://proget.netsrv.it:38443/api/management/feeds/get/Neo
             // Native API: https://proget.netsrv.it:38443/api/json/Feeds_GetFeed?Feed_Name=Neo
-            // FeedType_Name
-            var client = new RestClient(progetUrl);
-            var request = new RestRequest($"api/management/feeds/get/{feedName}", Method.GET); // TODO Replace RestClient+RestRequest to HttpClient+PostAsync
-            request.AddHeader("X-ApiKey", apiKey);
-            var response = client.Execute(request);
-            _log.Verbose("response.Content = '{0}'", response.Content);
+            //   or '{\"Feed_Name\": \"{feedName}\"}' as JsonBody in POST request
+            var client = new HttpClient
+            {
+                BaseAddress = new Uri(progetUrl)
+            };
+            client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
+            dynamic jsonObj = new JObject();
+            jsonObj.Feed_Name = feedName;
+            var content = new StringContent(jsonObj.ToString(), System.Text.Encoding.UTF8, "application/json");
             try
             {
-                dynamic resp = JObject.Parse(response.Content);
-                var feedType = resp.feedType.ToString();
+                var response = await client.PostAsync(@"/api/json/Feeds_GetFeed", content); // Native API
+                response.EnsureSuccessStatusCode();
+                var strBody = await response.Content.ReadAsStringAsync();
+                _log.Debug($"response.Content = '{strBody}'");
+                dynamic resp = JObject.Parse(strBody);
+                var feedType = resp.FeedType_Name.ToString();
                 _log.Information($"Определили тип фида {progetUrl}feeds/{feedName} как {feedType.ToString().ToLower()}");
                 return feedType;
             }
             catch (Exception e)
             {
-                _log.Error(e, $"Не смогли определить тип фида {progetUrl}feeds/{feedName}! Возможно из-за отсутствия привелегии \"Feed Management API\" у API-Key");
+                _log.Error(e, $"Не смогли определить тип фида {progetUrl}feeds/{feedName}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key");
                 return default;
             }
         }
@@ -473,7 +478,7 @@ namespace updater
                 var response = await client.PostAsync(@"/api/json/Feeds_GetFeed", content); // Native API
                 response.EnsureSuccessStatusCode();
                 var strBody = await response.Content.ReadAsStringAsync();
-                _log.Verbose("response.Content = '{0}'", strBody);
+                _log.Debug($"response.Content = '{strBody}'");
                 dynamic resp = JObject.Parse(strBody);
                 var feedId = resp.Feed_Id.ToString();
                 _log.Information($"Определили для фида {progetUrl}feeds/{feedName} Feed_Id = {feedId}");

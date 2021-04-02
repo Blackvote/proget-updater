@@ -1,3 +1,8 @@
+## 1.3.1 (2021-04-02)
+### Modified
+    - Теперь везде используем библиотеку HttpClient вместо RestClient
+    - Получаем Feed Type через "Native API". Привелегия "Feed Management API" больше не нужна для API-key
+
 ## 1.3.0 (2021-04-02)
 ### Modified
     - NTM-2133 Целевая платформа .NET Core 3.1 вместо 2.2
