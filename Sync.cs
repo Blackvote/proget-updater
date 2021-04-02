@@ -41,10 +41,10 @@ namespace updater
                             await SyncUniversalFeedsTask(feedConfig);
                             break;
                         case "nuget":
-                            SyncNuGetFeeds(feedConfig);
+                            await SyncNuGetFeedsTask(feedConfig);
                             break;
                         case "vsix":
-                            await SyncVsixFeedsAsync(feedConfig);
+                            await SyncVsixFeedsTask(feedConfig);
                             break;
                         default:
                             _log.Error("Фид имеет неизвестный тип '{sourceType}', синхронизация невозможна!", sourceType.ToLower());
@@ -148,7 +148,7 @@ namespace updater
             }
         }
 
-        private void SyncNuGetFeeds(ProGetConfig proGetConfig)
+        private async Task SyncNuGetFeedsTask(ProGetConfig proGetConfig)
         {
             var sourcePackageList = new Dictionary<string, string>();
             var destPackageList = new Dictionary<string, string>();
@@ -185,7 +185,7 @@ namespace updater
                     _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestinationProGet}feeds/{DestinationFeed}, выкачиваю и выкладываю.", packageDynamic.Id.ToString(), packageDynamic.Version.ToString(), proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName);
                     GetNugetPackage(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, 
                         packageDynamic.Id.ToString(), packageDynamic.Version.ToString());
-                    PushNugetPackage(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, 
+                    await PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, 
                         packageDynamic.Id.ToString(), packageDynamic.Version.ToString());
                 }
             }
@@ -222,8 +222,7 @@ namespace updater
             {
                 var dir = $"{TempDir}";
                 var fileName = $"{packageName}_{packageVersion}.nupkg";
-                if (!Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
                 var tempFile = Path.GetFullPath(dir + fileName);
                 using (var fileStream = File.Create(tempFile))
                 {
@@ -235,46 +234,60 @@ namespace updater
                         }
                     };
                     var response = client.DownloadData(request);
+                    fileStream.Flush();
+                    fileStream.Close();
                 }
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не получилось скачать nuget-пакет {PackageName}/{PackageVersion}", packageName, packageVersion);
+                _log.Error(e, $"Не получилось скачать nuget-пакет {packageName}/{packageVersion}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key");
             }
         }
-
-        private void PushNugetPackage(string progetUrl, string feedName, string apiKey, string packageName, string packageVersion)
+        private async Task PushNugetPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string packageVersion)
         {
+            var dir = $"{TempDir}";
+            var fileName = $"{packageName}_{packageVersion}.nupkg";
+            var fullFileName = Path.GetFullPath(dir + fileName);
+            var fileInfo = new FileInfo(fullFileName);
+            long fileSize = fileInfo.Length;
+            _log.Information($@"Выкладываю nuget-пакет {packageName} версии {packageVersion} в {progetUrl}feed/{feedName}");
             try
             {
-                var stringToFeed = progetUrl + $"nuget/{feedName}";
-                var dir = $"{TempDir}";
-                var fileName = $"{packageName}_{packageVersion}.nupkg";
-                var fullFileName = dir + fileName;
-                ExecuteDotnetCommand(fullFileName, stringToFeed, apiKey);
+                var client = new HttpClient
+                {
+                    BaseAddress = new Uri(progetUrl)
+                };
+                client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
+                using var content = new MultipartFormDataContent();
+                using var fileStream = File.OpenRead(fullFileName);
+                using var streamContent = new StreamContent(fileStream);
+                using (var fileContent = new ByteArrayContent(await streamContent.ReadAsByteArrayAsync()))
+                {
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(@"application/octet-stream");
+                    fileContent.Headers.ContentLength = fileSize;
+                    content.Add(fileContent, "filename", fileName);
+                    var response = await client.PutAsync($"nuget/{feedName}/", content); // Feed API?
+                    _log.Verbose($"response.StatusCode = '{response.StatusCode}', ReasonPhrase = '{response.ReasonPhrase}'");
+                    response.EnsureSuccessStatusCode();
+                }
+                fileStream.Close();
+                try
+                {
+                    File.Delete(fullFileName);
+                    _log.Verbose($"Удалили временный файл '{fullFileName}'");
+                }
+                catch (Exception e)
+                {
+                    _log.Warning(e, $"Не получилось удалить временный файл '{fullFileName}'");
+                }
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не получилось загрузить nuget-пакет {PackageName}/{PackageVersion} в {ProGetUrl}feeds/{ProGetFeed}", packageName, packageVersion, progetUrl, feedName);
+                _log.Error(e, $"Не получилось загрузить nuget-пакет {packageName}/{packageVersion} в {progetUrl}feeds/{feedName}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key");
             }
         }
 
-        private void ExecuteDotnetCommand(string packagePath, string progetUrl, string apiKey)
-        {
-            ProcessStartInfo psiutil = new ProcessStartInfo
-            {
-                FileName = "dotnet.exe",
-                Arguments = $"nuget push {packagePath} -k {apiKey} -s {progetUrl}"
-            };
-            var pUtil = new Process
-            {
-                StartInfo = psiutil
-            };
-            _ = pUtil.Start();
-        }
-
-
-        private async Task SyncVsixFeedsAsync(ProGetConfig proGetConfig)
+        private async Task SyncVsixFeedsTask(ProGetConfig proGetConfig)
         {
             var sourcePackageList = await GetVsixFeedPackageListAsync(@"источника", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey);
             var destPackageList = await GetVsixFeedPackageListAsync(@"назначения", proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey);
@@ -397,7 +410,7 @@ namespace updater
                 try
                 {
                     File.Delete(fullFileName);
-                    _log.Verbose("Удалили временный файл {fullFileName}", fullFileName);
+                    _log.Verbose("Удалили временный файл '{fullFileName}'", fullFileName);
                 }
                 catch (Exception e)
                 {
@@ -406,7 +419,7 @@ namespace updater
                 try
                 {
                     Directory.Delete(dir);
-                    _log.Verbose("Удалили временный каталог {dir}", dir);
+                    _log.Verbose("Удалили временный каталог '{dir}'", dir);
                 }
                 catch (Exception e)
                 {
