@@ -14,7 +14,17 @@ namespace updater
 {
     public class Sync
     {
-        private const string TempDir = @"C:\temp\updater\";
+        // https://docs.microsoft.com/en-us/dotnet/api/system.io.path.gettemppath?view=netcore-3.1&tabs=windows
+        // Windows:
+        //   - The path specified by the TMP environment variable.
+        //   - The path specified by the TEMP environment variable.
+        //   - The path specified by the USERPROFILE environment variable.
+        //   - The Windows directory.
+        // Linux
+        //   - The path specified by the TMPDIR environment variable.
+        //   - If the path is not specified in the TMPDIR environment variable, the default path /tmp/ is used.
+        private static readonly string TempDir = Path.Combine(Path.GetTempPath(), $@"updater{Path.DirectorySeparatorChar}");
+
         private readonly ProgramConfig _programConfig;
         private readonly ILogger _log;
         public Sync()
@@ -514,6 +524,7 @@ namespace updater
         {
             var dirsList = new List<string>() {
                 AppDomain.CurrentDomain.BaseDirectory + "packages", // old place for temporary nuget-packages
+                @"C:\temp\updater\", // old place, Windows preffered
                 $"{TempDir}" // current place for temporary packages (upack, nuget, vsix)
             };
             foreach (var dir in dirsList)
