@@ -1,19 +1,30 @@
 # Updater
 
-Утилита для выравнивания пакетов между центральным ProGet(BF) и ProGet эксплуатаций
+Утилита для копирования пакетов из центрального ProGet (Deeplay) в ProGet эксплуатации.
 
 ## Getting Started
 
-Запуск должен осуществляться от имени администратора
+Запуск должен осуществляться от имени администратора.
 
-Редактируем файл конфигурации и запускаем приложение. 
+Редактируем файл конфигурации 'config.json' и запускаем приложение 'updater.exe'.
 
-Для синхронизации nuget feeds необходим dotnet sdk 2.2
-https://dotnet.microsoft.com/download/dotnet-core/thank-you/sdk-2.2.207-windows-x64-installer
+Временные файлы создаются в каталоге ./updater/ в зависимости от платформы.
+Windows:
+    - The path specified by the TMP environment variable.
+    - The path specified by the TEMP environment variable.
+    - The path specified by the USERPROFILE environment variable.
+    - The Windows directory.
+Linux:
+    - The path specified by the TMPDIR environment variable.
+    - If the path is not specified in the TMPDIR environment variable, the default path /tmp/ is used.
+
+Логи пишутся
+    - в локальный Seq (http://127.0.0.1:5341)
+    - в файлы в каталог 'Logs', который создается в каталоге запуска утилиты. Ротация файлов каждый час.
 
 ### Prerequisites
 
-Конфигурация приложения
+Конфигурация приложения в файле 'config.json'.
 !!!Обратите внимание на обязательное наличие слешей в конце адресов!!!
 ```
 {
@@ -61,10 +72,11 @@ https://dotnet.microsoft.com/download/dotnet-core/thank-you/sdk-2.2.207-windows-
 
 ```
 
-Так же для ApiKey необходимо выставить права на "Feed Management API" в настройках ProGet(administration/api-keys) 
-только для синхронизации фидов типа NuGet, эта функция доступна только в ProGet 5.2.* и выше.
-
-Для ApiKey необходимо выставить права:
+Для ApiKey необходимо в настройках ProGet (administration/api-keys) выставить права:
 - "Native API"
-- "Feed Management API"
 - "Feed API"
+
+## Self-Update
+
+Утилита самообновляется на последную версию из фида/канала Updater в SourceProget первой пары Source-Target в файле 'config.json'.
+Обычно это https://proget.netsrv.it:38443/feeds/Updater

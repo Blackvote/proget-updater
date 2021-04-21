@@ -1,9 +1,12 @@
-## 2.0.0 (2021-04-16)
+## 2.0.0 (2021-04-21)
+### Added
+    - NTM-2328 Сделал кросс-платформенный self-update на C#, без bat-файлов и Windows TaskScheduller
+    - Добавил возможность запуска на Linux-x64
 ### Modified
     - NTM-2176 Временный каталог теперь из переменной окружения $TMP +'/updater', а не константа C:/temp/updater
         Windows: путь из переменной окружения TMP или TEMP или USERPROFILE или каталог Windows.
         Linux: путь из переменной окружения TMPDIR или используется путь /tmp/ по-умолчанию.
-    - Update dependencies: убрал зависимость от RestSharp.106.11.7 (2020.10.01)
+    - Update dependencies: убрал зависимость от RestSharp 106.11.7 (2020.10.01) и TaskScheduller 2.9.1
 
 ## 1.3.1 (2021-04-02)
 ### Modified

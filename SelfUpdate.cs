@@ -1,13 +1,12 @@
 ﻿using Inedo.UPack.Net;
+using Inedo.UPack.Packaging;
+using Serilog;
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Security;
-using Serilog;
-using System.IO;
-using Inedo.UPack.Packaging;
-using Microsoft.Win32.TaskScheduler;
 using System.Threading;
 
 namespace updater
@@ -43,11 +42,12 @@ namespace updater
             if (currentVersion.CompareTo(latestVersion) < 0) // currentVersion is less than latestVersion. See https://docs.microsoft.com/en-us/dotnet/api/system.version.compareto?view=netcore-3.1
             {
                 _log.Information("Found new version: {newVersion}, download and update", packages[0].LatestVersion);
+                var dir = Directory.GetCurrentDirectory();
 
                 try
                 {
                     using (var packageStream = await feed.GetPackageStreamAsync(packages[0].FullName, packages[0].LatestVersion))
-                    using (var fileStream = File.Create($"{Directory.GetCurrentDirectory()}/{packages[0].LatestVersion}.upack"))
+                    using (var fileStream = File.Create($"{dir}/{packages[0].LatestVersion}.upack"))
                     {
                         await packageStream.CopyToAsync(fileStream);
                     }
@@ -62,66 +62,44 @@ namespace updater
                 {
                     using (var package = new UniversalPackage($"{packages[0].LatestVersion}.upack"))
                     {
-                        await package.ExtractContentItemsAsync($"{Directory.GetCurrentDirectory()}/{packages[0].LatestVersion}");
+                        await package.ExtractContentItemsAsync($"{dir}/{packages[0].LatestVersion}");
                     }
+                    _log.Information("Successfully unzip archive {ver}, updating", packages[0].LatestVersion);
                 }
                 catch (Exception e)
                 {
-                    _log.Information("Unable to unzip the archive due to: {reason}", e.Message);
+                    _log.Error("Unable to unzip the archive due to: {reason}", e.Message);
                 }
-                _log.Information("Successfully unzip archive {ver}, updating", packages[0].LatestVersion);
 
-                _log.Information("Create file to self-update(update.bat)");
+                _log.Information($"Copy 'config.json' into dir '{dir}/{packages[0].LatestVersion}/'");
                 try
                 {
-
-                    string BatTxt = $"taskkill /im updater.exe\r\n" +
-                        $"cd {Directory.GetCurrentDirectory()}\r\n" +
-                        $"sleep 10\r\n" +
-                        $"powershell -Command Remove-Item ./{FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion} -Recurse \r\n" +
-                        $"powershell -Command Remove-Item ./*.* -Exclude config.json,update.bat,{packages[0].LatestVersion} \r\n" +
-                        $"sleep 5\r\n" +
-                        $"powershell -Command Copy-Item {packages[0].LatestVersion}\\*.* .\\ -Exclude config.json\r\n" +
-                        $"sleep 10\r\n" +
-                        $"start updater.exe";
-                    using (StreamWriter sw = new StreamWriter("update.bat"))
-                    {
-                        sw.Write(BatTxt);
-                    }
-
-                    _log.Information("Successfully create file update.bat");
+                    File.Copy($"{dir}/config.json", $"{dir}/{packages[0].LatestVersion}/config.json");
+                    _log.Information($"Successfully copied file 'config.json' ");
                 }
                 catch (Exception e)
                 {
-                    _log.Error("Error writing file for selfupdate, reason: {reason}", e.Message);
+                    _log.Error("Unable to copy config.json due to: {reason}", e.Message);
                 }
 
-                _log.Information("Create task in Schedule(Task Manager)");
-                try
+                var olddir = $"{dir}/{FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion}";
+                if (Directory.Exists(olddir))
                 {
-                    using (TaskService ts = new TaskService())
+                    _log.Verbose($"Cleanup: remove old directory '{olddir}'");
+                    try
                     {
-                        // Create a new task definition and assign properties
-                        TaskDefinition td = ts.NewTask();
-                        td.RegistrationInfo.Description = "Self-update for updater";
-
-                        // Create a trigger that will fire the task at this time every other day
-                        td.Triggers.Add(new TimeTrigger(DateTime.Now + TimeSpan.FromMinutes(1)));
-
-                        // Create an action that will launch Notepad whenever the trigger fires
-                        td.Actions.Add(new ExecAction($@"start /D {Directory.GetCurrentDirectory()}\ update.bat", null));
-
-                        // Register the task in the root folder
-                        ts.RootFolder.RegisterTaskDefinition(@"Self-update", td);
+                        Directory.Delete(olddir, true);
+                    }
+                    catch (Exception e)
+                    {
+                        _log.Warning(e, $"Can not delete directory '{olddir}'!");
                     }
                 }
-                catch (Exception e)
-                {
-                    _log.Error("Error create task in Schedule, reason: {reason}", e.Message);
-                }
+                Thread.Sleep(1000);
 
-                _log.Information("Wait for schedule-task for update");
-                Thread.Sleep(180000);
+                _log.Information("Start application updateer2.exe ...");
+                Process.Start($"{dir}/{packages[0].LatestVersion}/updater2.exe");
+                Process.GetCurrentProcess().Kill(); // Stop updater.exe for replace files
             }
             else
             {

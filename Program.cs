@@ -22,7 +22,7 @@ namespace updater
             Console.OutputEncoding = Encoding.UTF8;
             InitLogger();
             _log = Log.Logger;
-            _log.Information("Start application, version: {ver}", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
+            _log.Information("Start application 'updater', version: {ver}", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
 
             try
             {
