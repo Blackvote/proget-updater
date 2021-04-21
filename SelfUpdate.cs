@@ -58,11 +58,12 @@ namespace updater
                 }
 
                 _log.Information("Successfully download {ver}, installing", packages[0].LatestVersion);
+                var newdir = $"{dir}/{packages[0].LatestVersion}";
                 try
                 {
                     using (var package = new UniversalPackage($"{packages[0].LatestVersion}.upack"))
                     {
-                        await package.ExtractContentItemsAsync($"{dir}/{packages[0].LatestVersion}");
+                        await package.ExtractContentItemsAsync(newdir);
                     }
                     _log.Information("Successfully unzip archive {ver}, updating", packages[0].LatestVersion);
                 }
@@ -71,10 +72,10 @@ namespace updater
                     _log.Error("Unable to unzip the archive due to: {reason}", e.Message);
                 }
 
-                _log.Information($"Copy 'config.json' into dir '{dir}/{packages[0].LatestVersion}/'");
+                _log.Information("Copy 'config.json' into dir '{newdir}/'", newdir);
                 try
                 {
-                    File.Copy($"{dir}/config.json", $"{dir}/{packages[0].LatestVersion}/config.json");
+                    File.Copy($"{dir}/config.json", $"{newdir}/config.json");
                     _log.Information($"Successfully copied file 'config.json' ");
                 }
                 catch (Exception e)
@@ -97,8 +98,8 @@ namespace updater
                 }
                 Thread.Sleep(1000);
 
-                _log.Information("Start application updateer2.exe ...");
-                Process.Start($"{dir}/{packages[0].LatestVersion}/updater2.exe");
+                _log.Information("Start application updater2.exe ...");
+                Process.Start($"{newdir}/updater2.exe");
                 Process.GetCurrentProcess().Kill(); // Stop updater.exe for replace files
             }
             else

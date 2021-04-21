@@ -22,24 +22,29 @@ namespace updater
             _log.Information("Start application 'updater2', version: {ver}", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
             Thread.Sleep(3000);
 
-            var dir = $"{Directory.GetCurrentDirectory()}";
-            var dirSource = new DirectoryInfo($"{dir}");
-            var curDir = dirSource.Name;
-            var dirTarget = new DirectoryInfo($"{dir}").Parent;
+            var dir = Directory.GetCurrentDirectory();
+_log.Information("Current dir = '{dir}'", dir);
+            var dirSource = new DirectoryInfo(dir);
+            var curDirName = dirSource.Name;
+_log.Information("Current dir = '{curDirName}'", curDirName);
+            var dirTarget = new DirectoryInfo(dir).Parent;
+_log.Information("Current dirTarget.FullName = '{dirTarget}'", dirTarget.FullName);
 
             try
             {
                 // Remove old version in ../ -Exclude Logs,{packages[0].LatestVersion}
-                _log.Information($"Remove old files in dir '{dirTarget.FullName}'");
+                _log.Information("Remove old files in dir '{dirTarget}'", dirTarget.FullName); // FIXME ! BUG WAS HERE ! Remove all files & dirs in 'Z:\' !
+/*
                 foreach (var delDir in dirTarget.GetDirectories())
-                    if (delDir.Name != "Logs" || delDir.Name != $"{curDir}") delDir.Delete(true);
+                    if (delDir.Name != "Logs" || delDir.Name != curDirName) delDir.Delete(true);
                 foreach (var file in dirTarget.GetFiles())
                     file.Delete();
+*/
                 Thread.Sleep(1000);
 
                 // Copy all files and directories from 'sourceDirectory' (./*.*) to 'targetDirectory' (../).
-                _log.Information($"Copy files from dir '{dirSource.FullName}' into dir '{dirTarget.FullName}'");
-                CopyFilesRecursively(dirSource, dirTarget);
+                _log.Information("Copy files from dir '{dirSource}' into dir '{dirTarget}'", dirSource.FullName, dirTarget.FullName);
+//                CopyFilesRecursively(dirSource, dirTarget);
                 Thread.Sleep(3000);
             }
             catch (Exception e)
@@ -47,7 +52,7 @@ namespace updater
                 _log.Fatal("Something went wrong: {error}", e.Message);
             }
 
-            _log.Information($"Restart application!");
+            _log.Information("Restart application!");
             Process.Start(Path.Combine(dirTarget.FullName, "updater.exe"));
             Process.GetCurrentProcess().Kill(); // Stop updater2.exe
         }
@@ -60,11 +65,9 @@ namespace updater
 
             var logger = new LoggerConfiguration()
                 .WriteTo.Console()
-                .Enrich.WithProperty("Version",
-                    FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion)
+                .Enrich.WithProperty("Version", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion)
                 .Enrich.WithProperty("ProgramName", "NeoUpdater")
-                .WriteTo.File(path: logPath,
-                    formatter: formatter, rollingInterval: RollingInterval.Hour);
+                .WriteTo.File(path: logPath, formatter: formatter, rollingInterval: RollingInterval.Hour);
             logger = logger.WriteTo.Seq("http://127.0.0.1:5341");
             Log.Logger = logger.CreateLogger();
         }
