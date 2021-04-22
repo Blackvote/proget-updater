@@ -46,11 +46,9 @@ namespace updater
 
                 try
                 {
-                    using (var packageStream = await feed.GetPackageStreamAsync(packages[0].FullName, packages[0].LatestVersion))
-                    using (var fileStream = File.Create($"{dir}/{packages[0].LatestVersion}.upack"))
-                    {
-                        await packageStream.CopyToAsync(fileStream);
-                    }
+                    using var packageStream = await feed.GetPackageStreamAsync(packages[0].FullName, packages[0].LatestVersion);
+                    using var fileStream = File.Create(Path.Combine(dir, $"{packages[0].LatestVersion}.upack"));
+                    await packageStream.CopyToAsync(fileStream);
                 }
                 catch (Exception e)
                 {

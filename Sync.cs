@@ -237,12 +237,10 @@ namespace updater
                     BaseAddress = new Uri(progetUrl)
                 };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
-                using (var response = await client.GetAsync($"nuget/{feedName}/package/{packageName}/{packageVersion}")) // Feed API
-                using (var fileStream = File.Create(fullFileName))
-                {
-                    await response.Content.CopyToAsync(fileStream);
-                    response.EnsureSuccessStatusCode();
-                }
+                using var response = await client.GetAsync($"nuget/{feedName}/package/{packageName}/{packageVersion}"); // Feed API
+                using var fileStream = File.Create(fullFileName);
+                await response.Content.CopyToAsync(fileStream);
+                response.EnsureSuccessStatusCode();
             }
             catch (Exception e)
             {
@@ -375,12 +373,10 @@ namespace updater
                     BaseAddress = new Uri(progetUrl)
                 };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
-                using (var response = await client.GetAsync($"vsix/{feedName}/downloads/{Package_Id}/{packageVersion}")) // Feed API
-                using (var fileStream = File.Create(fullFileName))
-                {
-                    await response.Content.CopyToAsync(fileStream);
-                    response.EnsureSuccessStatusCode();
-                }
+                using var response = await client.GetAsync($"vsix/{feedName}/downloads/{Package_Id}/{packageVersion}"); // Feed API
+                using var fileStream = File.Create(fullFileName);
+                await response.Content.CopyToAsync(fileStream);
+                response.EnsureSuccessStatusCode();
             }
             catch (Exception e)
             {
