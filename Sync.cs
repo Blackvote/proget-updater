@@ -92,7 +92,7 @@ namespace updater
                     _log.Information("Not found {Group}/{Name} in {dProGetUrl}feeds/{dFeedName}, copy from {sProGetUrl}feeds/{sFeedName}", p.Group, p.Name, proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
                     foreach (var ver in p.AllVersions)
                     {
-                        var file = $@"{dir}{p.Group}_{p.Name}_{ver}.upack";
+                        var file = Path.Combine(dir, $"{p.Group}_{p.Name}_{ver}.upack");
                         using (var packageStream = await sourceFeed.GetPackageStreamAsync(p.FullName, ver))
                         using (var fileStream = File.Create(file))
                         {
@@ -126,7 +126,7 @@ namespace updater
                         {
                             if (!pack.AllVersions.Contains(ver))
                             {
-                                var file = $@"{dir}{p.Group}_{p.Name}_{ver}.upack";
+                                var file = Path.Combine(dir, $"{p.Group}_{p.Name}_{ver}.upack");
                                 using (var packageStream = await sourceFeed.GetPackageStreamAsync(p.FullName, ver))
                                 using (var fileStream = File.Create(file))
                                 {
@@ -229,7 +229,7 @@ namespace updater
             var dir = $"{TempDir}";
             var fileName = $"{packageName}_{packageVersion}.nupkg";
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            var fullFileName = Path.GetFullPath(dir + fileName);
+            var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             try
             {
                 var client = new HttpClient
@@ -253,7 +253,7 @@ namespace updater
         {
             var dir = $"{TempDir}";
             var fileName = $"{packageName}_{packageVersion}.nupkg";
-            var fullFileName = Path.GetFullPath(dir + fileName);
+            var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             var fileInfo = new FileInfo(fullFileName);
             long fileSize = fileInfo.Length;
             _log.Information($@"Выкладываю nuget-пакет {packageName} версии {packageVersion} в {progetUrl}feed/{feedName}");
@@ -364,10 +364,10 @@ namespace updater
         {
             // http://proget-server/vsix/{feedName}/downloads/{Package_Id}/{packageVersion}
             // https://proget.netsrv.it:38443/vsix/NeoGallery/downloads/MobiTemplateWizard.cae77667-8ddc-4040-acf7-f7491071af30/1.0.1
-            var dir = $"{TempDir}{Package_Id}/{packageVersion}/";
+            var dir = Path.Combine(TempDir, Package_Id, packageVersion);
             var fileName = $"{packageName}.vsix";
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            var fullFileName = Path.GetFullPath(dir + fileName);
+            var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             try
             {
                 var client = new HttpClient
@@ -523,7 +523,7 @@ namespace updater
         public void CleanUpDirs()
         {
             var dirsList = new List<string>() {
-                AppDomain.CurrentDomain.BaseDirectory + "packages", // old place for temporary nuget-packages
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"packages"), // old place for temporary nuget-packages
                 @"C:\temp\updater\", // old place, Windows preffered
                 $"{TempDir}" // current place for temporary packages (upack, nuget, vsix)
             };
