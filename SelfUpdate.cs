@@ -39,10 +39,11 @@ namespace updater
             _log.Information("Current version: {currentVersion}", currentVersion.ToString());
             _log.Information("Latest version in repository: {latestVersion}", latestVersion.ToString());
 
+            var dir = Directory.GetCurrentDirectory();
+            var olddir = Path.Combine(dir, FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
             if (currentVersion.CompareTo(latestVersion) < 0) // currentVersion is less than latestVersion. See https://docs.microsoft.com/en-us/dotnet/api/system.version.compareto?view=netcore-3.1
             {
                 _log.Information("Found new version: {newVersion}, download and update", packages[0].LatestVersion);
-                var dir = Directory.GetCurrentDirectory();
 
                 try
                 {
@@ -84,7 +85,6 @@ namespace updater
                     _log.Error("Unable to copy 'config.json' due to: {reason}", e.Message);
                 }
 
-                var olddir = Path.Combine(dir, FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
                 if (Directory.Exists(olddir))
                 {
                     _log.Verbose("Cleanup: remove old directory '{olddir}'", olddir);
@@ -117,6 +117,18 @@ namespace updater
             else
             {
                 _log.Information("Latest version is already installed");
+                if (Directory.Exists(olddir))
+                {
+                    _log.Verbose("Cleanup: remove old directory '{olddir}'", olddir);
+                    try
+                    {
+                        Directory.Delete(olddir, true);
+                    }
+                    catch (Exception e)
+                    {
+                        _log.Warning(e, "Can not delete directory '{olddir}'!", olddir);
+                    }
+                }
             }
 
         }
