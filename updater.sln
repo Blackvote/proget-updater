@@ -4,9 +4,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 16.0.30128.74
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "updater", "updater.csproj", "{95A736C2-2BCD-445E-9DFD-D82BA0FB8F1C}"
-	ProjectSection(ProjectDependencies) = postProject
-		{E7CCDCEC-2023-4AF9-81D7-33F7A04ACBBB} = {E7CCDCEC-2023-4AF9-81D7-33F7A04ACBBB}
-	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "updater2", "updater2\updater2.csproj", "{E7CCDCEC-2023-4AF9-81D7-33F7A04ACBBB}"
 EndProject
