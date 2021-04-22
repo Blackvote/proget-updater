@@ -58,7 +58,7 @@ namespace updater
                 }
 
                 _log.Information("Successfully download {ver}, installing", packages[0].LatestVersion);
-                var newdir = $"{dir}/{packages[0].LatestVersion}";
+                var newdir = Path.Combine(dir, $"{packages[0].LatestVersion}");
                 try
                 {
                     using (var package = new UniversalPackage($"{packages[0].LatestVersion}.upack"))
@@ -75,32 +75,46 @@ namespace updater
                 _log.Information("Copy 'config.json' into dir '{newdir}/'", newdir);
                 try
                 {
-                    File.Copy($"{dir}/config.json", $"{newdir}/config.json");
-                    _log.Information($"Successfully copied file 'config.json' ");
+                    File.Copy(
+                        Path.Combine(dir, "config.json"),
+                        Path.Combine(newdir, "config.json")
+                        );
+                    _log.Information("Successfully copied file 'config.json'");
                 }
                 catch (Exception e)
                 {
-                    _log.Error("Unable to copy config.json due to: {reason}", e.Message);
+                    _log.Error("Unable to copy 'config.json' due to: {reason}", e.Message);
                 }
 
-                var olddir = $"{dir}/{FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion}";
+                var olddir = Path.Combine(dir, FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
                 if (Directory.Exists(olddir))
                 {
-                    _log.Verbose($"Cleanup: remove old directory '{olddir}'");
+                    _log.Verbose("Cleanup: remove old directory '{olddir}'", olddir);
                     try
                     {
                         Directory.Delete(olddir, true);
                     }
                     catch (Exception e)
                     {
-                        _log.Warning(e, $"Can not delete directory '{olddir}'!");
+                        _log.Warning(e, "Can not delete directory '{olddir}'!", olddir);
                     }
                 }
                 Thread.Sleep(1000);
 
-                _log.Information("Start application updater2.exe ...");
-                Process.Start($"{newdir}/updater2.exe");
-                Process.GetCurrentProcess().Kill(); // Stop updater.exe for replace files
+                _log.Information("Start application {app} ...", "updater2.exe");
+                var processInfo = new ProcessStartInfo
+                {
+                    WorkingDirectory = newdir,
+                    FileName = Path.Combine(newdir, "updater2.exe"),
+                    Arguments = "",
+                    CreateNoWindow = false,
+                    UseShellExecute = false,
+                    RedirectStandardError = false,
+                    RedirectStandardOutput = false,
+                    RedirectStandardInput = false
+                };
+                Process.Start(processInfo); // Start new version of 'updater2.exe'
+                Process.GetCurrentProcess().Kill(); // Stop updater.exe
             }
             else
             {

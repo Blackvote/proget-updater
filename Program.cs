@@ -22,7 +22,7 @@ namespace updater
             Console.OutputEncoding = Encoding.UTF8;
             InitLogger();
             _log = Log.Logger;
-            _log.Information("Start application 'updater', version: {ver}", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
+            _log.Information("Start application '{app}', version: {ver}", "updater", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
 
             try
             {
@@ -55,15 +55,14 @@ namespace updater
         {
             var formatter = new CompactJsonFormatter();
 
-            string logPath = $"{Directory.GetCurrentDirectory()}/Logs/";
+            string logPath = Path.Combine(Directory.GetCurrentDirectory(), $"Logs{Path.DirectorySeparatorChar}");
 
             var logger = new LoggerConfiguration()
                 .WriteTo.Console()
                 .Enrich.WithProperty("Version",
                     FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion)
                 .Enrich.WithProperty("ProgramName", "NeoUpdater")
-                .WriteTo.File(path: logPath,
-                    formatter: formatter, rollingInterval: RollingInterval.Hour);
+                .WriteTo.File(path: logPath, formatter: formatter, rollingInterval: RollingInterval.Hour);
             logger = logger.WriteTo.Seq("http://127.0.0.1:5341");
             Log.Logger = logger.CreateLogger();
         }
