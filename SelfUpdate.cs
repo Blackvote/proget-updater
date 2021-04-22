@@ -34,10 +34,10 @@ namespace updater
 
             var packages = await feed.ListPackagesAsync("", null);
 
-            _log.Information("Current version: {currentVersion}", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
-            _log.Information("Latest version in repository: {latestVersion}", packages[0].LatestVersion);
             Version currentVersion = new Version(FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
             Version latestVersion = new Version(packages[0].LatestVersion.ToString());
+            _log.Information("Current version: {currentVersion}", currentVersion.ToString());
+            _log.Information("Latest version in repository: {latestVersion}", latestVersion.ToString());
 
             if (currentVersion.CompareTo(latestVersion) < 0) // currentVersion is less than latestVersion. See https://docs.microsoft.com/en-us/dotnet/api/system.version.compareto?view=netcore-3.1
             {
@@ -70,7 +70,7 @@ namespace updater
                     _log.Error("Unable to unzip the archive due to: {reason}", e.Message);
                 }
 
-                _log.Information("Copy 'config.json' into dir '{newdir}/'", newdir);
+                _log.Information("Copy 'config.json' into dir '{newdir}'", newdir);
                 try
                 {
                     File.Copy(

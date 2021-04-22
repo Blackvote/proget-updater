@@ -1,14 +1,12 @@
 ﻿using Serilog;
-using System;
-using System.IO;
-using System.Threading.Tasks;
-using Serilog.Core;
-using Logger = Serilog.Core.Logger;
-using System.Threading;
 using Serilog.Formatting.Compact;
+using System;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace updater
 {
@@ -59,8 +57,7 @@ namespace updater
 
             var logger = new LoggerConfiguration()
                 .WriteTo.Console()
-                .Enrich.WithProperty("Version",
-                    FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion)
+                .Enrich.WithProperty("Version", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion)
                 .Enrich.WithProperty("ProgramName", "NeoUpdater")
                 .WriteTo.File(path: logPath, formatter: formatter, rollingInterval: RollingInterval.Hour);
             logger = logger.WriteTo.Seq("http://127.0.0.1:5341");
