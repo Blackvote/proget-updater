@@ -9,14 +9,9 @@
 Редактируем файл конфигурации 'config.json' и запускаем приложение 'updater.exe'.
 
 Временные файлы создаются в каталоге ./updater/ в зависимости от платформы.
-Windows:
-    - The path specified by the TMP environment variable.
-    - The path specified by the TEMP environment variable.
-    - The path specified by the USERPROFILE environment variable.
-    - The Windows directory.
-Linux:
-    - The path specified by the TMPDIR environment variable.
-    - If the path is not specified in the TMPDIR environment variable, the default path /tmp/ is used.
+
+    - Windows: путь из переменной окружения TMP или TEMP или USERPROFILE или каталог Windows.
+    - Linux: путь из переменной окружения TMPDIR или используется путь /tmp/ по-умолчанию.
 
 Логи пишутся
     - в локальный Seq (http://127.0.0.1:5341)
