@@ -1,4 +1,4 @@
-## 2.0.0 (2021-04-21)
+## 2.0.0 (2021-04-27)
 ### Added
     - NTM-2328 Сделал кросс-платформенный self-update на C#, без bat-файлов и Windows TaskScheduler
     - Добавил возможность запуска на linux-x64, как native self-contained app
