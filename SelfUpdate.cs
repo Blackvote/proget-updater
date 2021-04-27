@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Reflection;
-using System.Security;
 using System.Threading;
 
 namespace updater
@@ -25,8 +24,7 @@ namespace updater
 
         public async System.Threading.Tasks.Task IsUpdateNeeded()
         {
-
-            SecureString apiKey = new NetworkCredential("", _config.ProGetConfigs[0].SourceProGetApiKey).SecurePassword;
+            var apiKey = new NetworkCredential("", _config.ProGetConfigs[0].SourceProGetApiKey).SecurePassword;
 
             var endpoint = new UniversalFeedEndpoint(new Uri($"{_config.ProGetConfigs[0].SourceProGetUrl}/upack/Updater"), "api", apiKey);
 
@@ -34,8 +32,8 @@ namespace updater
 
             var packages = await feed.ListPackagesAsync("", null);
 
-            Version currentVersion = new Version(FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
-            Version latestVersion = new Version(packages[0].LatestVersion.ToString());
+            var currentVersion = new Version(FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
+            var latestVersion = new Version(packages[0].LatestVersion.ToString());
             _log.Information("Current version: {currentVersion}", currentVersion.ToString());
             _log.Information("Latest version in repository: {latestVersion}", latestVersion.ToString());
 
@@ -58,6 +56,18 @@ namespace updater
 
                 _log.Information("Successfully download {ver}, installing", packages[0].LatestVersion);
                 var newdir = Path.Combine(dir, $"{packages[0].LatestVersion}");
+                if (Directory.Exists(newdir))
+                {
+                    _log.Verbose("Cleanup: remove existing directory '{newdir}'", newdir);
+                    try
+                    {
+                        Directory.Delete(newdir, true);
+                    }
+                    catch (Exception e)
+                    {
+                        _log.Warning(e, "Can not delete directory '{newdir}'!", newdir);
+                    }
+                }
                 try
                 {
                     using (var package = new UniversalPackage($"{packages[0].LatestVersion}.upack"))
@@ -71,12 +81,14 @@ namespace updater
                     _log.Error("Unable to unzip the archive due to: {reason}", e.Message);
                 }
 
+                newdir = Path.Combine(newdir, Program.TargetPlatform);
                 _log.Information("Copy 'config.json' into dir '{newdir}'", newdir);
                 try
                 {
                     File.Copy(
                         Path.Combine(dir, "config.json"),
-                        Path.Combine(newdir, "config.json")
+                        Path.Combine(newdir, "config.json"),
+                        true
                         );
                     _log.Information("Successfully copied file 'config.json'");
                 }
@@ -84,6 +96,9 @@ namespace updater
                 {
                     _log.Error("Unable to copy 'config.json' due to: {reason}", e.Message);
                 }
+
+                if (Program.IsLinux)
+                    Chmod("0750", Path.Combine(newdir, Program.ExeFileName));
 
                 if (Directory.Exists(olddir))
                 {
@@ -99,20 +114,33 @@ namespace updater
                 }
                 Thread.Sleep(1000);
 
-                _log.Information("Start application {app} ...", "updater2.exe");
+                _log.Information("Start application {app} ...", "updater --replace-restart");
                 var processInfo = new ProcessStartInfo
                 {
-                    WorkingDirectory = newdir,
-                    FileName = Path.Combine(newdir, "updater2.exe"),
-                    Arguments = "",
-                    CreateNoWindow = false,
+                    WorkingDirectory = dir,
+                    FileName = Path.Combine(newdir, Program.ExeFileName),
+                    Arguments = "--replace-restart",
+                    CreateNoWindow = true,
                     UseShellExecute = false,
-                    RedirectStandardError = false,
-                    RedirectStandardOutput = false,
-                    RedirectStandardInput = false
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardInput = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
                 };
-                Process.Start(processInfo); // Start new version of 'updater2.exe'
-                Process.GetCurrentProcess().Kill(); // Stop updater.exe
+                int exitCode;
+                var newProcess = Process.Start(processInfo); // Start new version of './{version}/{targetPlatform}/updater --replace-restart'
+                if (newProcess is null)
+                {
+                    _log.Error("Process for 'updater --replace-restart' is not started!");
+                    exitCode = 1;
+                }
+                else
+                {
+                    _log.Information("Process for 'updater --replace-restart' was started sucessfull. New process ID = {Id}", newProcess.Id);
+                    exitCode = 10;
+                }
+                _log.Information("Finish the process ID = {Id}. ExitCode = {ExitCode}", Process.GetCurrentProcess().Id, exitCode);
+                Environment.Exit(exitCode); // Stop updater
             }
             else
             {
@@ -130,7 +158,24 @@ namespace updater
                     }
                 }
             }
+        }
 
+        private void Chmod(string permission, string fullFileName)
+        {
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    FileName = "chmod", // /usr/bin/chmod
+                    Arguments = $" {permission} \"{fullFileName}\""
+                }
+            };
+            process.Start();
+            process.WaitForExit();
         }
 
     }
