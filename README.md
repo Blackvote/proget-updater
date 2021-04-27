@@ -1,19 +1,39 @@
 # Updater
 
-Утилита для выравнивания пакетов между центральным ProGet(BF) и ProGet эксплуатаций
+Утилита для копирования/синхронизации пакетов из центрального ProGet (Deeplay) в ProGet эксплуатации.
+
+## Documentations
+
+Документация доступна в Confluence:
+    - "GitLab. Репозиторий и CI/CD" https://confluence.getcom.pw/pages/viewpage.action?pageId=38377967
+    - "ProGet. 3. Установка утилиты updater" https://confluence.getcom.pw/pages/viewpage.action?pageId=45652780
 
 ## Getting Started
 
-Запуск должен осуществляться от имени администратора
+Разворачиваем утилиту из upack-пакета, например updater-2.0.0.upack во временный каталог.
+https://proget.netsrv.it:38443/feeds/Updater
 
-Редактируем файл конфигурации и запускаем приложение. 
+Копируем файлы из каталога под используемую платформу:
+    - Windows: copy package\win-x64\*.* Z:\updater\
+    - Linux:   cp package/linux-x64/* /srv/updater/
 
-Для синхронизации nuget feeds необходим dotnet sdk 2.2
-https://dotnet.microsoft.com/download/dotnet-core/thank-you/sdk-2.2.207-windows-x64-installer
+Редактируем файл конфигурации 'config.json'.
+
+Под Linux делаем файл запускаемым: `chmod 0750 /srv/updater/updater`
+
+Запускаем приложение 'updater.exe' от имени Администратора.
+
+Временные файлы создаются в каталоге ./updater/ в зависимости от платформы.
+    - Windows: путь из переменной окружения TMP или TEMP или USERPROFILE или каталог Windows (C:\Windows\TEMP\).
+    - Linux: путь из переменной окружения TMPDIR или используется путь /tmp/ по-умолчанию.
+
+Логи пишутся
+    - в локальный Seq (http://127.0.0.1:5341)
+    - в файлы в каталог 'Logs', который создается в каталоге запуска утилиты. Ротация файлов каждый час.
 
 ### Prerequisites
 
-Конфигурация приложения
+Конфигурация приложения в файле 'config.json'.
 !!!Обратите внимание на обязательное наличие слешей в конце адресов!!!
 ```
 {
@@ -61,10 +81,36 @@ https://dotnet.microsoft.com/download/dotnet-core/thank-you/sdk-2.2.207-windows-
 
 ```
 
-Так же для ApiKey необходимо выставить права на "Feed Management API" в настройках ProGet(administration/api-keys) 
-только для синхронизации фидов типа NuGet, эта функция доступна только в ProGet 5.2.* и выше.
-
-Для ApiKey необходимо выставить права:
+Для ApiKey необходимо в настройках ProGet (administration/api-keys) выставить права:
 - "Native API"
-- "Feed Management API"
 - "Feed API"
+
+## Self-Update
+
+Утилита самообновляется на последную версию из фида/канала Updater в SourceProget первой пары Source-Target в файле 'config.json'.
+Обычно это https://proget.netsrv.it:38443/feeds/Updater
+
+## Like Windows Service
+
+Для установки в виде сервиса в ОС Windows используйте утилиту NSSM (Non-Sucking Service Manager) http://nssm.cc/
+
+Обязательно версию NSSM не ниже 2.24-103 и версию updater не ниже 2.0.0 !
+
+nssm 2.24-103-gdee49fc (2017-05-16) [0722c8a775deb4a1460d1750088916f4f5951773] http://nssm.cc/ci/nssm-2.24-103-gdee49fc.zip
+
+Для правильной установки сервиса выполните следующие команды:
+
+```
+C:\bin\nssm-2.24-103-gdee49fc\win64\nssm.exe install Updater "C:\bin\updater\updater.exe"
+C:\bin\nssm-2.24-103-gdee49fc\win64\nssm.exe set Updater Description Feeds synchronization between ProGets
+C:\bin\nssm-2.24-103-gdee49fc\win64\nssm.exe set Updater AppKillProcessTree 0
+C:\bin\nssm-2.24-103-gdee49fc\win64\nssm.exe set Updater AppExit Default Restart
+C:\bin\nssm-2.24-103-gdee49fc\win64\nssm.exe set Updater AppExit 0 Exit
+C:\bin\nssm-2.24-103-gdee49fc\win64\nssm.exe set Updater AppExit 10 Ignore
+C:\bin\nssm-2.24-103-gdee49fc\win64\nssm.exe set Updater AppEvents Stop/Pre "powershell Stop-Process -Name updater -Force"
+```
+
+где
+    - C:\bin\nssm-2.24-103-gdee49fc\win64\ = каталог установки утилиты NSSM
+    - C:\bin\updater = каталог установки утилиты updater
+    - Updater = название сервиса

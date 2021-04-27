@@ -2,7 +2,6 @@
 using Serilog;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -10,14 +9,22 @@ using System.Net.Http;
 using System.Security;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
-using RestSharp;
-using RestSharp.Authenticators;
 
 namespace updater
 {
     public class Sync
     {
-        private const string TempDir = @"C:\temp\updater\";
+        // https://docs.microsoft.com/en-us/dotnet/api/system.io.path.gettemppath?view=netcore-3.1&tabs=windows
+        // Windows:
+        //   - The path specified by the TMP environment variable.
+        //   - The path specified by the TEMP environment variable.
+        //   - The path specified by the USERPROFILE environment variable.
+        //   - The Windows directory.
+        // Linux
+        //   - The path specified by the TMPDIR environment variable.
+        //   - If the path is not specified in the TMPDIR environment variable, the default path /tmp/ is used.
+        private static readonly string TempDir = Path.Combine(Path.GetTempPath(), $@"updater{Path.DirectorySeparatorChar}");
+
         private readonly ProgramConfig _programConfig;
         private readonly ILogger _log;
         public Sync()
@@ -60,7 +67,7 @@ namespace updater
         
         private async Task SyncUniversalFeedsTask(ProGetConfig proGetConfig)
         {
-            _log.Information("Start matching versions in local and remote Proget's");
+            _log.Information("Start syncing upack-feeds");
             SecureString sourceApiKey = new NetworkCredential("", proGetConfig.SourceProGetApiKey).SecurePassword;
 
             var sourceEndpoint = new UniversalFeedEndpoint(new Uri($"{proGetConfig.SourceProGetUrl}/upack/{proGetConfig.SourceProGetFeedName}"), "api", sourceApiKey);
@@ -82,10 +89,12 @@ namespace updater
                 var search = await destFeed.SearchPackagesAsync(p.Name);
                 if (!search.Any(x => x.FullName == p.FullName))
                 {
-                    _log.Information("Not found {Group}/{Name} in {dProGetUrl}feeds/{dFeedName}, copy from {sProGetUrl}feeds/{sFeedName}", p.Group, p.Name, proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
+                    _log.Information("Not found {Group}/{Name} in {dProGetFeed}, copy from {sProGetFeed}", p.Group, p.Name, 
+                        $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}",
+                        $"{proGetConfig.SourceProGetUrl}feeds/{proGetConfig.SourceProGetFeedName}");
                     foreach (var ver in p.AllVersions)
                     {
-                        var file = $@"{dir}{p.Group}_{p.Name}_{ver}.upack";
+                        var file = Path.Combine(dir, $"{p.Group}_{p.Name}_{ver}.upack");
                         using (var packageStream = await sourceFeed.GetPackageStreamAsync(p.FullName, ver))
                         using (var fileStream = File.Create(file))
                         {
@@ -97,15 +106,15 @@ namespace updater
                             await destFeed.UploadPackageAsync(fileStream);
                         }
 
-                        _log.Information("start delete {file}, first foreach", file);
+                        _log.Information("Start delete {file}, first foreach", file);
                         try
                         {
                             File.Delete(file);
-                            _log.Information("смогли удалить файл {upack}", file);
+                            _log.Information("File {file} was deleted", file);
                         }
                         catch
                         {
-                            _log.Information("не смогли удалить файл {upack}", file);
+                            _log.Warning("Can not delete file {file}", file);
                         }
                     }
                 }
@@ -119,7 +128,7 @@ namespace updater
                         {
                             if (!pack.AllVersions.Contains(ver))
                             {
-                                var file = $@"{dir}{p.Group}_{p.Name}_{ver}.upack";
+                                var file = Path.Combine(dir, $"{p.Group}_{p.Name}_{ver}.upack");
                                 using (var packageStream = await sourceFeed.GetPackageStreamAsync(p.FullName, ver))
                                 using (var fileStream = File.Create(file))
                                 {
@@ -130,22 +139,24 @@ namespace updater
                                     _log.Information("Copying package {Group}/{Package} to {ProGetUrl}", p.Group, p.Name, proGetConfig.DestProGetUrl);
                                     await destFeed.UploadPackageAsync(fileStream);
                                 }
-                                //_log.Information("start delete {file}, second foreach", file);
+                                //_log.Information("Start delete {file}, second foreach", file);
                                 //try
                                 //{
                                 //    File.Delete(file);
-                                //    _log.Information("смогли удалить файл {upack}", file);
+                                //     _log.Information("File {file} was deleted", file);
                                 //}
                                 //catch
                                 //{
-                                //    _log.Information("не смогли удалить файл {upack}", file);
+                                //    _log.Warning("Can not delete file {file}", file);
                                 //}
                             }
                         }
-                        _log.Information("Not found new version {Group}/{Name} in {ProGetUrl}feeds/{FeedName}", p.Group, p.Name, proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
+                        _log.Information("Not found new version {Group}/{Name} in {SourceProGetFeed}", p.Group, p.Name, 
+                            $"{proGetConfig.SourceProGetUrl}feeds/{proGetConfig.SourceProGetFeedName}");
                     }
                 }
             }
+            _log.Information("Finish syncing upack-feeds");
         }
 
         private async Task SyncNuGetFeedsTask(ProGetConfig proGetConfig)
@@ -155,25 +166,26 @@ namespace updater
 
             try
             {
-                _log.Information("Пытаюсь получить список nuget-пакетов из прогета {SourceProGet}feeds/{SourceFeed}", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
+                _log.Information("Пытаюсь получить список nuget-пакетов из прогета источника {SourceProGetFeed}", 
+                    $"{proGetConfig.SourceProGetUrl}feeds/{proGetConfig.SourceProGetFeedName}");
                 sourcePackageList = await GetNugetFeedPackageListAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey);
-                _log.Information("Получил список пакетов из {SourceProGet}feeds/{SourceFeed}", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не смог получить список nuget-пакетов из прогета источника {SourceProGet}feeds/{Sourcefeed}", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName);
+                _log.Error(e, "Не смог получить список nuget-пакетов из прогета источника {SourceProGetFeed}", 
+                    $"{proGetConfig.SourceProGetUrl}feeds/{proGetConfig.SourceProGetFeedName}");
             }
 
             try
             {
-                _log.Information(
-                    "Пытаюсь получить список nuget-пакетов из прогета назначения для сравнения {DestinationProGet}feeds/{DestinationFeed}",
-                    proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName);
+                _log.Information("Пытаюсь получить список nuget-пакетов из прогета назначения для сравнения {DestinationProGetFeed}", 
+                    $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
                 destPackageList = await GetNugetFeedPackageListAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey);
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не смог получить список nuget-пакетов из прогета источника {DestinationProGet}feeds/{Destinationfeed}", proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName);
+                _log.Error(e, "Не смог получить список nuget-пакетов из прогета назначения {DestProGetFeed}", 
+                    $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
             }
 
             _log.Information("Приступаю к сравнению nuget-фидов");
@@ -182,13 +194,16 @@ namespace updater
                 dynamic packageDynamic = JObject.Parse(package.Value);
                 if (!destPackageList.ContainsKey(packageDynamic.Id.ToString() + "_" + packageDynamic.Version.ToString()))
                 {
-                    _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestinationProGet}feeds/{DestinationFeed}, выкачиваю и выкладываю.", packageDynamic.Id.ToString(), packageDynamic.Version.ToString(), proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName);
+                    _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestProGetFeed}}, выкачиваю и выкладываю.", 
+                        packageDynamic.Id.ToString(), packageDynamic.Version.ToString(), 
+                        $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
                     await GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, 
                         packageDynamic.Id.ToString(), packageDynamic.Version.ToString());
                     await PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, 
                         packageDynamic.Id.ToString(), packageDynamic.Version.ToString());
                 }
             }
+            _log.Information("Закончил сравнение nuget-фидов");
         }
 
         private async Task<Dictionary<string, string>> GetNugetFeedPackageListAsync(string progetUrl, string feedName, string apiKey)
@@ -208,7 +223,9 @@ namespace updater
             dynamic resp = JObject.Parse(strBody);
             foreach (var package in resp.d.results)
             {
-                _log.Information("Нашел nuget-пакет {PackageName} версии {PackageVersion} в {ProGetUrl}feeds/{ProGetFeed}", package.Id.ToString(), package.Version.ToString(), progetUrl, feedName);
+                _log.Information("Нашел nuget-пакет {PackageName} версии {PackageVersion} в {ProGetFeed}", 
+                    package.Id.ToString(), package.Version.ToString(), 
+                    $"{progetUrl}feeds/{feedName}");
                 var packageName = package.Id.ToString() + "_" + package.Version.ToString();
                 packageList.Add(packageName, package.ToString());
             }
@@ -222,7 +239,7 @@ namespace updater
             var dir = $"{TempDir}";
             var fileName = $"{packageName}_{packageVersion}.nupkg";
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            var fullFileName = Path.GetFullPath(dir + fileName);
+            var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             try
             {
                 var client = new HttpClient
@@ -230,26 +247,25 @@ namespace updater
                     BaseAddress = new Uri(progetUrl)
                 };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
-                using (var response = await client.GetAsync($"nuget/{feedName}/package/{packageName}/{packageVersion}")) // Feed API
-                using (var fileStream = File.Create(fullFileName))
-                {
-                    await response.Content.CopyToAsync(fileStream);
-                    response.EnsureSuccessStatusCode();
-                }
+                using var response = await client.GetAsync($"nuget/{feedName}/package/{packageName}/{packageVersion}"); // Feed API
+                using var fileStream = File.Create(fullFileName);
+                await response.Content.CopyToAsync(fileStream);
+                response.EnsureSuccessStatusCode();
             }
             catch (Exception e)
             {
-                _log.Error(e, $"Не получилось скачать nuget-пакет {packageName}/{packageVersion}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key");
+                _log.Error(e, "Не получилось скачать nuget-пакет {packageName}/{packageVersion}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key", 
+                    packageName, packageVersion);
             }
         }
         private async Task PushNugetPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string packageVersion)
         {
             var dir = $"{TempDir}";
             var fileName = $"{packageName}_{packageVersion}.nupkg";
-            var fullFileName = Path.GetFullPath(dir + fileName);
+            var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             var fileInfo = new FileInfo(fullFileName);
             long fileSize = fileInfo.Length;
-            _log.Information($@"Выкладываю nuget-пакет {packageName} версии {packageVersion} в {progetUrl}feed/{feedName}");
+            _log.Information("Выкладываю nuget-пакет {packageName} версии {packageVersion} в {ProGetFeed}", packageName, packageVersion, $"{progetUrl}feed/{feedName}");
             try
             {
                 var client = new HttpClient
@@ -266,38 +282,40 @@ namespace updater
                     fileContent.Headers.ContentLength = fileSize;
                     content.Add(fileContent, "filename", fileName);
                     var response = await client.PutAsync($"nuget/{feedName}/", content); // Feed API?
-                    _log.Verbose($"response.StatusCode = '{response.StatusCode}', ReasonPhrase = '{response.ReasonPhrase}'");
+                    _log.Debug("response: StatusCode = '{StatusCode}', ReasonPhrase = '{ReasonPhrase}'", response.StatusCode, response.ReasonPhrase);
                     response.EnsureSuccessStatusCode();
                 }
                 fileStream.Close();
                 try
                 {
                     File.Delete(fullFileName);
-                    _log.Verbose($"Удалили временный файл '{fullFileName}'");
+                    _log.Verbose("Удалили временный файл '{fullFileName}'", fullFileName);
                 }
                 catch (Exception e)
                 {
-                    _log.Warning(e, $"Не получилось удалить временный файл '{fullFileName}'");
+                    _log.Warning(e, "Не получилось удалить временный файл '{fullFileName}'", fullFileName);
                 }
             }
             catch (Exception e)
             {
-                _log.Error(e, $"Не получилось загрузить nuget-пакет {packageName}/{packageVersion} в {progetUrl}feeds/{feedName}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key");
+                _log.Error(e, "Не получилось загрузить nuget-пакет {packageName}/{packageVersion} в {ProGetFeed}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key",
+                    packageName, packageVersion, $"{progetUrl}feeds/{feedName}");
             }
         }
 
         private async Task SyncVsixFeedsTask(ProGetConfig proGetConfig)
         {
-            var sourcePackageList = await GetVsixFeedPackageListAsync(@"источника", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey);
-            var destPackageList = await GetVsixFeedPackageListAsync(@"назначения", proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey);
+            var sourcePackageList = await GetVsixFeedPackageListAsync("источника", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey);
+            var destPackageList = await GetVsixFeedPackageListAsync("назначения", proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey);
             _log.Information("Приступаю к сравнению vsix-фидов");
             foreach (var package in sourcePackageList)
             {
                 dynamic packageDynamic = JObject.Parse(package.Value);
                 if (!destPackageList.ContainsKey(packageDynamic.Package_Id.ToString() + "_" + packageDynamic.Version.ToString()))
                 {
-                    _log.Information("Не нашел vsix-пакет {PackageId} версии {PackageVersion} в {DestinationProGet}feeds/{DestinationFeed}, выкачиваю и выкладываю.",
-                        packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(), proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName);
+                    _log.Information("Не нашел vsix-пакет {PackageId} версии {PackageVersion} в {DestProGetFeed}, выкачиваю и выкладываю.",
+                        packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(), 
+                        $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
 
                     await GetVsixPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey,
                         packageDynamic.DisplayName_Text.ToString(), packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString());
@@ -306,6 +324,7 @@ namespace updater
                         packageDynamic.DisplayName_Text.ToString(), packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString());
                 }
             }
+            _log.Information("Закончил сравнение vsix-фидов");
         }
 
         private async Task<Dictionary<string, string>> GetVsixFeedPackageListAsync(string side, string progetUrl, string feedName, string apiKey)
@@ -313,7 +332,7 @@ namespace updater
             // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/api/json/VsixPackages_GetPackages?Feed_Id=2046 -ContentType "application/json" -Headers @{"X-ApiKey" = "XXXXXXXXX"; "charset" = "utf-8"}
             // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/api/json/VsixPackages_GetPackages -ContentType "application/json" -Headers @{"X-ApiKey" = "XXXXXXXXX"; "charset" = "utf-8"} -Body (@{"Feed_Id" = 2046}|ConvertTo-Json)
             // Use 'Native API'. See https://proget.netsrv.it:38443/reference/api and https://docs.inedo.com/docs/proget/reference/api/native
-            _log.Information($"Пытаюсь получить список пакетов из прогета {side} {progetUrl}feeds/{feedName}");
+            _log.Information("Пытаюсь получить список vsix-пакетов из прогета {side} {ProGetFeed}", side, $"{progetUrl}feeds/{feedName}");
             Dictionary<string, string> packageList = new Dictionary<string, string>();
             var feedId = await GetFeedIdAsync(progetUrl, feedName, apiKey);
 
@@ -324,32 +343,40 @@ namespace updater
             client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
             dynamic jsonObj = new JObject();
             jsonObj.Feed_Id = feedId;
-            _log.Verbose("request.body = '{0}'", jsonObj.ToString());
+            _log.Debug("request.body = '{0}'", jsonObj.ToString());
             var content = new StringContent(jsonObj.ToString(), System.Text.Encoding.UTF8, "application/json");
             try
             {
                 var response = await client.PostAsync(@"/api/json/VsixPackages_GetPackages", content); // Native API
                 response.EnsureSuccessStatusCode();
                 var strBody = await response.Content.ReadAsStringAsync();
-                _log.Verbose("response.Content = '{0}'", strBody);
+                _log.Debug("response.Content = '{0}'", strBody);
                 dynamic resp = JArray.Parse(strBody);
                 foreach (var package in resp)
                 {
                     // DisplayName_Text, Package_Id
                     // Major_Number, Minor_Number, Build_Number, Revision_Number
-                    string version = CombineVersion(package.Major_Number.ToString(), package.Minor_Number.ToString(), package.Build_Number.ToString(), package.Revision_Number.ToString());
+                    string version = CombineVersion(
+                        package.Major_Number.ToString(), 
+                        package.Minor_Number.ToString(), 
+                        package.Build_Number.ToString(), 
+                        package.Revision_Number.ToString()
+                        );
                     package.Add("Version", version.ToString());
-                    _log.Information("Нашел vsix-пакет {PackageId} версии {PackageVersion} в {ProGetUrl}feeds/{ProGetFeed}", package.Package_Id.ToString(), package.Version.ToString(), progetUrl, feedName);
+                    _log.Information("Нашел vsix-пакет {PackageId} версии {PackageVersion} в {ProGetFeed}", 
+                        package.Package_Id.ToString(), package.Version.ToString(), 
+                        $"{progetUrl}feeds/{feedName}");
                     var packageName = package.Package_Id.ToString() + "_" + package.Version.ToString();
                     packageList.Add(packageName, package.ToString());
                 }
             }
             catch (Exception e)
             {
-                _log.Error(e, $"Не смогли получить список vsix-пакетов из прогета {side} {progetUrl}feeds/{feedName}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key");
+                _log.Error(e, "Не смогли получить список vsix-пакетов из прогета {side} {ProGetFeed}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key", 
+                    side, $"{progetUrl}feeds/{feedName}");
                 throw;
             }
-            _log.Information($"Получил список vsix-пакетов из прогета {side} {progetUrl}feeds/{feedName}");
+            _log.Information("Получил список vsix-пакетов из прогета {side} {ProGetFeed}", side, $"{progetUrl}feeds/{feedName}");
             return packageList;
         }
 
@@ -357,10 +384,10 @@ namespace updater
         {
             // http://proget-server/vsix/{feedName}/downloads/{Package_Id}/{packageVersion}
             // https://proget.netsrv.it:38443/vsix/NeoGallery/downloads/MobiTemplateWizard.cae77667-8ddc-4040-acf7-f7491071af30/1.0.1
-            var dir = $"{TempDir}{Package_Id}/{packageVersion}/";
+            var dir = Path.Combine(TempDir, Package_Id, packageVersion);
             var fileName = $"{packageName}.vsix";
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            var fullFileName = Path.GetFullPath(dir + fileName);
+            var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             try
             {
                 var client = new HttpClient
@@ -368,12 +395,10 @@ namespace updater
                     BaseAddress = new Uri(progetUrl)
                 };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
-                using (var response = await client.GetAsync($"vsix/{feedName}/downloads/{Package_Id}/{packageVersion}")) // Feed API
-                using (var fileStream = File.Create(fullFileName))
-                {
-                    await response.Content.CopyToAsync(fileStream);
-                    response.EnsureSuccessStatusCode();
-                }
+                using var response = await client.GetAsync($"vsix/{feedName}/downloads/{Package_Id}/{packageVersion}"); // Feed API
+                using var fileStream = File.Create(fullFileName);
+                await response.Content.CopyToAsync(fileStream);
+                response.EnsureSuccessStatusCode();
             }
             catch (Exception e)
             {
@@ -402,7 +427,7 @@ namespace updater
                 using (var content = new StreamContent(stream))
                 {
                     var response = await client.PostAsync($"vsix/{feedName}", content); // Feed API?
-                    _log.Verbose($"response.StatusCode = '{response.StatusCode}', ReasonPhrase = '{response.ReasonPhrase}'");
+                    _log.Debug("response: StatusCode = '{StatusCode}', ReasonPhrase = '{ReasonPhrase}'", response.StatusCode, response.ReasonPhrase);
                     response.EnsureSuccessStatusCode();
                 }
                 try
@@ -426,7 +451,8 @@ namespace updater
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не получилось загрузить vsix-пакет {PackageId}/{PackageVersion} в {ProGetUrl}feeds/{ProGetFeed}", Package_Id, packageVersion, progetUrl, feedName);
+                _log.Error(e, "Не получилось загрузить vsix-пакет {PackageId}/{PackageVersion} в {ProGetFeed}", 
+                    Package_Id, packageVersion, $"{progetUrl}feeds/{feedName}");
             }
         }
 
@@ -451,12 +477,12 @@ namespace updater
                 _log.Debug($"response.Content = '{strBody}'");
                 dynamic resp = JObject.Parse(strBody);
                 var feedType = resp.FeedType_Name.ToString();
-                _log.Information($"Определили тип фида {progetUrl}feeds/{feedName} как {feedType.ToString().ToLower()}");
+                _log.Information("Определили тип фида {ProGetFeed} как {feedType}", $"{progetUrl}feeds/{feedName}", feedType.ToString().ToLower());
                 return feedType;
             }
             catch (Exception e)
             {
-                _log.Error(e, $"Не смогли определить тип фида {progetUrl}feeds/{feedName}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key");
+                _log.Error(e, "Не смогли определить тип фида {ProGetFeed}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key", $"{progetUrl}feeds/{feedName}");
                 return default;
             }
         }
@@ -478,15 +504,16 @@ namespace updater
                 var response = await client.PostAsync(@"/api/json/Feeds_GetFeed", content); // Native API
                 response.EnsureSuccessStatusCode();
                 var strBody = await response.Content.ReadAsStringAsync();
-                _log.Debug($"response.Content = '{strBody}'");
+                _log.Debug("response.Content = '{0}'", strBody);
                 dynamic resp = JObject.Parse(strBody);
                 var feedId = resp.Feed_Id.ToString();
-                _log.Information($"Определили для фида {progetUrl}feeds/{feedName} Feed_Id = {feedId}");
+                _log.Information("Определили для фида {ProGetFeed} Feed_Id = {feedId}", $"{progetUrl}feeds/{feedName}", feedId);
                 return feedId;
             }
             catch (Exception e)
             {
-                _log.Error(e, $"Не смогли определить ид фида {progetUrl}feeds/{feedName}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key");
+                _log.Error(e, "Не смогли определить ид фида {ProGetFeed}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key", 
+                    $"{progetUrl}feeds/{feedName}");
                 return default;
             }
         }
@@ -516,21 +543,22 @@ namespace updater
         public void CleanUpDirs()
         {
             var dirsList = new List<string>() {
-                AppDomain.CurrentDomain.BaseDirectory + "packages", // old place for temporary nuget-packages
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"packages"), // old place for temporary nuget-packages
+                @"C:\temp\updater\", // old place, Windows preffered
                 $"{TempDir}" // current place for temporary packages (upack, nuget, vsix)
             };
             foreach (var dir in dirsList)
             {
                 if (Directory.Exists(dir))
                 {
-                    _log.Information($"Cleanup: remove directory '{dir}'");
+                    _log.Information("Cleanup: remove directory '{dir}'", dir);
                     try
                     {
                         Directory.Delete(dir, true);
                     }
                     catch (Exception e)
                     {
-                        _log.Error(e, $"Can not delete directory '{dir}'!");
+                        _log.Error(e, "Can not delete directory '{dir}'!", dir);
                     }
                 }
             }

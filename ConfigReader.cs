@@ -27,8 +27,7 @@ namespace updater
                     try
                     {
                         jArray = JArray.Parse(readedConfig);
-                        _log.Information("Нашел {ConfigurationCount} конфигураций синхронизации фидов",
-                            jArray.Count);
+                        _log.Information("Нашел {ConfigurationCount} конфигураций синхронизации фидов", jArray.Count);
 
                         foreach (var conf in jArray)
                         {
@@ -46,7 +45,7 @@ namespace updater
                     }
                     catch (Exception e)
                     {
-                        _log.Information(e, "Конфигурация имеет тип object, для синхронизации нескльких фидов необходимо отредактировать конфиг, смотри readme");
+                        _log.Information(e, "Конфигурация имеет тип object, для синхронизации нескольких фидов необходимо отредактировать 'config.json', смотри README.md");
 
                         JObject jsonConfig = JObject.Parse(readedConfig);
                         var progetConfig = new ProGetConfig
