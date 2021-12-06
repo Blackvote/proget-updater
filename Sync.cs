@@ -216,18 +216,29 @@ namespace updater
                 BaseAddress = new Uri(progetUrl)
             };
             client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
-            var response = await client.GetAsync($@"nuget/{feedName}/Packages?$format=json"); // Feed API
+            var response = await client.GetAsync($@"nuget/{feedName}/v3/search"); // Feed API
             response.EnsureSuccessStatusCode();
             var strBody = await response.Content.ReadAsStringAsync();
             _log.Debug("response.Content = '{0}'", strBody);
             dynamic resp = JObject.Parse(strBody);
-            foreach (var package in resp.d.results)
+            foreach (var package in resp.data)
             {
-                _log.Information("Нашел nuget-пакет {PackageName} версии {PackageVersion} в {ProGetFeed}", 
-                    package.Id.ToString(), package.Version.ToString(), 
-                    $"{progetUrl}feeds/{feedName}");
-                var packageName = package.Id.ToString() + "_" + package.Version.ToString();
-                packageList.Add(packageName, package.ToString());
+                string id = package.id.ToString();
+
+                _log.Information("Нашёл семейство nuget-пакетов {PackageName}", id);
+
+                foreach (var ver in package.versions)
+                {
+                    string version = ver.version.ToString();
+
+                    _log.Information("Нашел nuget-пакет {PackageName} версии {PackageVersion} в {ProGetFeed}", 
+                        id, version,
+                        $"{progetUrl}feeds/{feedName}");
+
+                    var packageName = id + "_" + version;
+
+                    packageList.Add(packageName, package.ToString());
+                }
             }
             return packageList;
         }
