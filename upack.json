@@ -1,6 +1,6 @@
 {
   "group": "utils",
   "name": "updater",
-  "version": "2.0.0",
-  "description": "NTM-2176, NTM-2328 Сделали утилиту кросс-платформенной и self-update без bat-файлов."
+  "version": "2.0.1",
+  "description": "SNT-4969. Поменял парсинг информации по nuget-пакетам под новое API ProGet (на версиях >= 6.0.0); переход на .NET 5."
 }
