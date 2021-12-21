@@ -192,15 +192,15 @@ namespace updater
             foreach (var package in sourcePackageList)
             {
                 dynamic packageDynamic = JObject.Parse(package.Value);
-                if (!destPackageList.ContainsKey(packageDynamic.Id.ToString() + "_" + packageDynamic.Version.ToString()))
+                string id = packageDynamic.id.ToString();
+                string version = packageDynamic.version.ToString();
+
+                if (!destPackageList.ContainsKey(id + "_" + version))
                 {
                     _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestProGetFeed}}, выкачиваю и выкладываю.", 
-                        packageDynamic.Id.ToString(), packageDynamic.Version.ToString(), 
-                        $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
-                    await GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, 
-                        packageDynamic.Id.ToString(), packageDynamic.Version.ToString());
-                    await PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, 
-                        packageDynamic.Id.ToString(), packageDynamic.Version.ToString());
+                        id, version, $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
+                    await GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, id, version);
+                    await PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, id, version);
                 }
             }
             _log.Information("Закончил сравнение nuget-фидов");
