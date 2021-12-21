@@ -2,6 +2,7 @@
 using Inedo.UPack.Packaging;
 using Serilog;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -30,7 +31,22 @@ namespace updater
 
             var feed = new UniversalFeedClient(endpoint);
 
-            var packages = await feed.ListPackagesAsync("", null);
+            IReadOnlyList<RemoteUniversalPackage> packages;
+            try
+            {
+                packages = await feed.ListPackagesAsync("", null);
+            }
+            catch(Exception ex)
+            {
+                _log.Error("Feed upack/Updater error access. {exception}", ex);
+                return;
+            }
+
+            if (packages.Count == 0)
+            {
+                _log.Information("There aren't Updater's packages.");
+                return;
+            }
 
             var currentVersion = new Version(FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
             var latestVersion = new Version(packages[0].LatestVersion.ToString());
