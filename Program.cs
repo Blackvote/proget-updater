@@ -20,7 +20,7 @@ namespace updater
         internal static string ExeFileName { get; set; }
         internal static bool IsLinux { get; set; }
 
-        static int Main(string[] args)
+        static async Task Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
             InitLogger();
@@ -87,8 +87,8 @@ namespace updater
                 try
                 {
                     sync.CleanUpDirs();
-                    Task.Run(async () => { await selfUpdate.IsUpdateNeeded(); }).GetAwaiter().GetResult();
-                    Task.Run(async () => { await sync.CheckTask();}).GetAwaiter().GetResult();
+                    await selfUpdate.IsUpdateNeeded();
+                    await sync.CheckTask();
                     _log.Information("Waiting 60 second");
                     Thread.Sleep(60000);
                 }
