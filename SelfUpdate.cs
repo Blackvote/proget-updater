@@ -25,9 +25,9 @@ namespace updater
 
         public async System.Threading.Tasks.Task IsUpdateNeeded()
         {
-            var apiKey = new NetworkCredential("", _config.ProGetConfigs[0].SourceProGetApiKey).SecurePassword;
+            var apiKey = new NetworkCredential("", _config.ProGetConfigs[0].DestProGetApiKey).SecurePassword;
 
-            var endpoint = new UniversalFeedEndpoint(new Uri($"{_config.ProGetConfigs[0].SourceProGetUrl}/upack/Updater"), "api", apiKey);
+            var endpoint = new UniversalFeedEndpoint(new Uri($"{_config.ProGetConfigs[0].DestProGetUrl}/upack/Updater"), "api", apiKey);
 
             var feed = new UniversalFeedClient(endpoint);
 
