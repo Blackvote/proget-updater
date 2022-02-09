@@ -104,7 +104,9 @@ namespace updater
         public static async Task ReplaceRestart()
         {
             var productVersion = FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion;
-            Thread.Sleep(3000);
+
+            _log.Verbose("Wait for 3 seconds.");
+            await Task.Delay(TimeSpan.FromSeconds(3));
 
             var exeDir = new DirectoryInfo(Path.TrimEndingDirectorySeparator(AppDomain.CurrentDomain.BaseDirectory));
             var exeDirFullName = exeDir.FullName;

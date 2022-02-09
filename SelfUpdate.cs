@@ -8,6 +8,7 @@ using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace updater
 {
@@ -23,7 +24,7 @@ namespace updater
             _log = Log.Logger.ForContext("ClassType", GetType());
         }
 
-        public async System.Threading.Tasks.Task IsUpdateNeeded()
+        public async Task IsUpdateNeeded()
         {
             var apiKey = new NetworkCredential("", _config.ProGetConfigs[0].DestProGetApiKey).SecurePassword;
 
@@ -114,7 +115,7 @@ namespace updater
                 }
 
                 if (Program.IsLinux)
-                    Chmod("0750", Path.Combine(newdir, Program.ExeFileName));
+                    await ChmodAsync("0750", Path.Combine(newdir, Program.ExeFileName));
 
                 if (Directory.Exists(olddir))
                 {
@@ -128,7 +129,9 @@ namespace updater
                         _log.Warning(e, "Can not delete directory '{olddir}'!", olddir);
                     }
                 }
-                Thread.Sleep(1000);
+
+                _log.Verbose("Delay for 1 second");
+                await Task.Delay(TimeSpan.FromSeconds(1));
 
                 _log.Information("Start application {app} ...", "updater --replace-restart");
                 var processInfo = new ProcessStartInfo
@@ -176,7 +179,17 @@ namespace updater
             }
         }
 
-        private void Chmod(string permission, string fullFileName)
+        private async Task FindLatestVersion()
+        {
+            List<string> universalFeeds = new List<string>();
+
+            foreach (var config in _config.ProGetConfigs)
+            {
+
+            }
+        }
+
+        private async Task ChmodAsync(string permission, string fullFileName)
         {
             var process = new Process
             {
@@ -191,7 +204,7 @@ namespace updater
                 }
             };
             process.Start();
-            process.WaitForExit();
+            await process.WaitForExitAsync();
         }
 
     }
