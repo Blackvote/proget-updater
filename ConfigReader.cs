@@ -3,30 +3,33 @@ using Serilog;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace updater
 {
     class ConfigReader
     {
         private readonly ILogger _log;
-        private readonly string _configPath = AppDomain.CurrentDomain.BaseDirectory + "config.json";
-        private readonly JArray jArray;
+        private readonly string _configPath;
 
         public ConfigReader()
         {
             _log = Log.Logger.ForContext("ClassType", GetType());
+            _configPath = AppDomain.CurrentDomain.BaseDirectory + "config.json";
+        }
 
+        public async Task ReadConfigAsync()
+        {
             try
             {
                 _log.Information("Пытаюсь найти файл конфигурации {ConfigFilePath}", _configPath);
                 if (File.Exists(_configPath))
                 {
-                    StreamReader config = new StreamReader(_configPath);
-                    var readedConfig = config.ReadToEnd();
+                    var readedConfig = await File.ReadAllTextAsync(_configPath);
                     List<ProGetConfig> tempList = new List<ProGetConfig>();
                     try
                     {
-                        jArray = JArray.Parse(readedConfig);
+                        JArray jArray = JArray.Parse(readedConfig);
                         _log.Information("Нашел {ConfigurationCount} конфигураций синхронизации фидов", jArray.Count);
 
                         foreach (var conf in jArray)
@@ -45,7 +48,7 @@ namespace updater
                     }
                     catch (Exception e)
                     {
-                        _log.Information(e, "Конфигурация имеет тип object, для синхронизации нескольких фидов необходимо отредактировать 'config.json', смотри README.md");
+                        _log.Warning(e, "Конфигурация имеет тип object, для синхронизации нескольких фидов необходимо отредактировать 'config.json', смотри README.md");
 
                         JObject jsonConfig = JObject.Parse(readedConfig);
                         var progetConfig = new ProGetConfig

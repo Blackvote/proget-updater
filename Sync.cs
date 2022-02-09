@@ -85,7 +85,7 @@ namespace updater
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             foreach (var p in packages)
             {
-                _log.Information("Target package {Group}/{name}", p.Group, p.Name);
+                _log.Verbose("Target package {Group}/{name}", p.Group, p.Name);
                 var search = await destFeed.SearchPackagesAsync(p.Name);
                 if (!search.Any(x => x.FullName == p.FullName))
                 {
@@ -123,7 +123,7 @@ namespace updater
                 {
                     if (p.FullName == pack.FullName)
                     {
-                        _log.Information("Found package {Group}/{Name}, in local ProGet, cheking versions", p.Group, p.Name);
+                        _log.Verbose("Found package {Group}/{Name}, in local ProGet, checking versions", p.Group, p.Name);
                         foreach (var ver in p.AllVersions)
                         {
                             if (!pack.AllVersions.Contains(ver))
@@ -151,7 +151,7 @@ namespace updater
                                 //}
                             }
                         }
-                        _log.Information("Not found new version {Group}/{Name} in {SourceProGetFeed}", p.Group, p.Name, 
+                        _log.Verbose("Not found new version {Group}/{Name} in {SourceProGetFeed}", p.Group, p.Name, 
                             $"{proGetConfig.SourceProGetUrl}feeds/{proGetConfig.SourceProGetFeedName}");
                     }
                 }

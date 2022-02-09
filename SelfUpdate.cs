@@ -155,7 +155,7 @@ namespace updater
                     _log.Information("Process for 'updater --replace-restart' was started sucessfull. New process ID = {Id}", newProcess.Id);
                     exitCode = 10;
                 }
-                _log.Information("Finish the process ID = {Id}. ExitCode = {ExitCode}", Process.GetCurrentProcess().Id, exitCode);
+                _log.Information("Finish the process ID = {Id}. ExitCode = {ExitCode}", Environment.ProcessId, exitCode);
                 Environment.Exit(exitCode); // Stop updater
             }
             else
