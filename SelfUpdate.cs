@@ -5,8 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Reflection;
+using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,6 +19,7 @@ namespace updater
         public ProgramConfig _config;
         public ILogger _log;
 
+        private ProGet _proGet;
 
         public SelfUpdate()
         {
@@ -179,14 +182,46 @@ namespace updater
             }
         }
 
-        private async Task FindLatestVersion()
+        private async Task<(Version latestVersion, UniversalFeedClient fidWithLastVersion)> FindLatestVersion()
         {
-            List<string> universalFeeds = new List<string>();
+            Version latestVersion = null;
+            UniversalFeedClient fidWithLastVersion = null;
 
             foreach (var config in _config.ProGetConfigs)
             {
+                string sourceType = await _proGet.GetFeedTypeAsync(config.DestProGetUrl, config.DestProGetFeedName, config.DestProGetApiKey);
+                if (sourceType.ToLower() == "universal")
+                {
+                    SecureString sourceApiKey = new NetworkCredential("", config.SourceProGetApiKey).SecurePassword;
+                    var destEndpoint = new UniversalFeedEndpoint(new Uri($"{config.DestProGetUrl}/upack/{config.DestProGetFeedName}"), "api", sourceApiKey);
+                    var destFeed = new UniversalFeedClient(destEndpoint);
 
+                    IReadOnlyList<RemoteUniversalPackage> packages;
+                    try
+                    {
+                        packages = await destFeed.ListPackagesAsync("", null);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.Error("Feed upack/Updater error access. {exception}", ex);
+                        continue;
+                    }
+
+                    var updaterPackage = packages.FirstOrDefault(p => p.Group == "utils" && p.Name == "updater");
+                    if (updaterPackage != null)
+                    {
+                        Version latestVersionInFeed = new Version(updaterPackage.LatestVersion.ToString());
+
+                        if (latestVersion == null || latestVersion < latestVersionInFeed)
+                        {
+                            latestVersion = latestVersionInFeed;
+                            fidWithLastVersion = destFeed;
+                        }
+                    }
+                }
             }
+
+            return (latestVersion, fidWithLastVersion);
         }
 
         private async Task ChmodAsync(string permission, string fullFileName)

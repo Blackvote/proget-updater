@@ -23,7 +23,7 @@ namespace updater
         // Linux
         //   - The path specified by the TMPDIR environment variable.
         //   - If the path is not specified in the TMPDIR environment variable, the default path /tmp/ is used.
-        private readonly string TempDir = Path.Combine(Path.GetTempPath(), $@"updater{Path.DirectorySeparatorChar}");
+        private readonly string TempDir;
 
         private readonly ProGet _proGet;
 
@@ -33,6 +33,10 @@ namespace updater
         {
             _programConfig = ProgramConfig.Instance;
             _log = Log.Logger.ForContext("ClassType", GetType());
+
+            TempDir = Path.Combine(Path.GetTempPath(), $@"updater{Path.DirectorySeparatorChar}");
+
+            _proGet = new ProGet(TempDir);
         }
 
         public async Task CheckTask()
