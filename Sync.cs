@@ -36,7 +36,7 @@ namespace updater
 
             TempDir = Path.Combine(Path.GetTempPath(), $@"updater{Path.DirectorySeparatorChar}");
 
-            _proGet = new ProGet(TempDir);
+            _proGet = new ProGet();
         }
 
         public async Task CheckTask()
@@ -205,8 +205,8 @@ namespace updater
                 {
                     _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestProGetFeed}}, выкачиваю и выкладываю.", 
                         id, version, $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
-                    await _proGet.GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, id, version);
-                    await _proGet.PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, id, version);
+                    await _proGet.GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, id, version, TempDir);
+                    await _proGet.PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, id, version, TempDir);
                 }
             }
             _log.Information("Закончил сравнение nuget-фидов");
@@ -227,10 +227,10 @@ namespace updater
                         $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
 
                     await _proGet.GetVsixPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey,
-                        packageDynamic.DisplayName_Text.ToString(), packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString());
+                        packageDynamic.DisplayName_Text.ToString(), packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(), TempDir);
 
                     await _proGet.PushVsixPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey,
-                        packageDynamic.DisplayName_Text.ToString(), packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString());
+                        packageDynamic.DisplayName_Text.ToString(), packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(), TempDir);
                 }
             }
             _log.Information("Закончил сравнение vsix-фидов");

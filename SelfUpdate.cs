@@ -25,11 +25,17 @@ namespace updater
         {
             _config = ProgramConfig.Instance;
             _log = Log.Logger.ForContext("ClassType", GetType());
+
+            _proGet = new ProGet();
         }
 
         public async Task IsUpdateNeeded()
         {
             (RemoteUniversalPackage remotePackage, UniversalFeedClient feed) = await FindLatestVersion();
+            if (remotePackage == null || feed == null)
+            {
+                _log.Information("There aren't Updater's packages.");
+            }
 
             var currentVersion = new Version(FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
             var latestVersion = new Version(remotePackage.LatestVersion.ToString());

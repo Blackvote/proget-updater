@@ -13,13 +13,10 @@ namespace updater
     internal class ProGet
     {
         private readonly ILogger _log;
-        private readonly string TempDir;
 
-        public ProGet(string tempDir)
+        public ProGet()
         {
             _log = Log.Logger.ForContext("ClassType", GetType());
-
-            TempDir = tempDir;
         }
 
         public async Task<Dictionary<string, string>> GetNugetFeedPackageListAsync(string progetUrl, string feedName, string apiKey)
@@ -59,11 +56,11 @@ namespace updater
             return packageList;
         }
 
-        public async Task GetNugetPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string packageVersion)
+        public async Task GetNugetPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string packageVersion, string downloadToDirectory)
         {
             // http://proget-server/api/v2/package/{feedName}/{packageName}/{optional-version}
             // https://proget.netsrv.it:38443/nuget/seqplug/package/Seq.App.Exporter/1.2.3
-            var dir = $"{TempDir}";
+            var dir = $"{downloadToDirectory}";
             var fileName = $"{packageName}_{packageVersion}.nupkg";
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
@@ -86,9 +83,9 @@ namespace updater
             }
         }
 
-        public async Task PushNugetPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string packageVersion)
+        public async Task PushNugetPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string packageVersion, string uploadFromDirectory)
         {
-            var dir = $"{TempDir}";
+            var dir = $"{uploadFromDirectory}";
             var fileName = $"{packageName}_{packageVersion}.nupkg";
             var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             var fileInfo = new FileInfo(fullFileName);
@@ -184,11 +181,11 @@ namespace updater
             return packageList;
         }
 
-        public async Task GetVsixPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string Package_Id, string packageVersion)
+        public async Task GetVsixPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string Package_Id, string packageVersion, string downloadToDirectory)
         {
             // http://proget-server/vsix/{feedName}/downloads/{Package_Id}/{packageVersion}
             // https://proget.netsrv.it:38443/vsix/NeoGallery/downloads/MobiTemplateWizard.cae77667-8ddc-4040-acf7-f7491071af30/1.0.1
-            var dir = Path.Combine(TempDir, Package_Id, packageVersion);
+            var dir = Path.Combine(downloadToDirectory, Package_Id, packageVersion);
             var fileName = $"{packageName}.vsix";
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
@@ -210,10 +207,10 @@ namespace updater
             }
         }
 
-        public async Task PushVsixPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string Package_Id, string packageVersion)
+        public async Task PushVsixPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string Package_Id, string packageVersion, string uploadFromDirectory)
         {
             // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/vsix/NeoGallery -InFile.\MobiTemplateWizard.vsix - Headers @{ "X-ApiKey" = "XXXXXXXXXXXXXX"}
-            var dir = $"{TempDir}{Package_Id}/{packageVersion}/";
+            var dir = $"{uploadFromDirectory}{Package_Id}/{packageVersion}/";
             var fileName = $"{packageName}.vsix";
             var fullFileName = dir + fileName;
             FileInfo fileInfo = new FileInfo(fullFileName);
