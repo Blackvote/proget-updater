@@ -35,6 +35,7 @@ namespace updater
             if (remotePackage == null || feed == null)
             {
                 _log.Information("There aren't Updater's packages.");
+                return;
             }
 
             var currentVersion = new Version(FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
@@ -178,8 +179,8 @@ namespace updater
                 string sourceType = await _proGet.GetFeedTypeAsync(config.DestProGetUrl, config.DestProGetFeedName, config.DestProGetApiKey);
                 if (sourceType.ToLower() == "universal")
                 {
-                    SecureString sourceApiKey = new NetworkCredential("", config.SourceProGetApiKey).SecurePassword;
-                    var destEndpoint = new UniversalFeedEndpoint(new Uri($"{config.DestProGetUrl}/upack/{config.DestProGetFeedName}"), "api", sourceApiKey);
+                    SecureString destApiKey = new NetworkCredential("", config.SourceProGetApiKey).SecurePassword;
+                    var destEndpoint = new UniversalFeedEndpoint(new Uri($"{config.DestProGetUrl}/upack/{config.DestProGetFeedName}"), "api", destApiKey);
                     var destFeed = new UniversalFeedClient(destEndpoint);
 
                     IReadOnlyList<RemoteUniversalPackage> packages;
