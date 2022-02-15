@@ -179,7 +179,7 @@ namespace updater
                 string sourceType = await _proGet.GetFeedTypeAsync(config.DestProGetUrl, config.DestProGetFeedName, config.DestProGetApiKey);
                 if (sourceType.ToLower() == "universal")
                 {
-                    SecureString destApiKey = new NetworkCredential("", config.SourceProGetApiKey).SecurePassword;
+                    SecureString destApiKey = new NetworkCredential("", config.DestProGetApiKey).SecurePassword;
                     var destEndpoint = new UniversalFeedEndpoint(new Uri($"{config.DestProGetUrl}/upack/{config.DestProGetFeedName}"), "api", destApiKey);
                     var destFeed = new UniversalFeedClient(destEndpoint);
 

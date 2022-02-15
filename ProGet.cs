@@ -145,7 +145,7 @@ namespace updater
             dynamic jsonObj = new JObject();
             jsonObj.Feed_Id = feedId;
             _log.Debug("request.body = '{0}'", jsonObj.ToString());
-            var content = new StringContent(jsonObj.ToString(), System.Text.Encoding.UTF8, "application/json");
+            var content = new StringContent(jsonObj.ToString(), Encoding.UTF8, "application/json");
             try
             {
                 var response = await client.PostAsync(@"/api/json/VsixPackages_GetPackages", content); // Native API
@@ -269,7 +269,7 @@ namespace updater
             client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
             dynamic jsonObj = new JObject();
             jsonObj.Feed_Name = feedName;
-            var content = new StringContent(jsonObj.ToString(), System.Text.Encoding.UTF8, "application/json");
+            var content = new StringContent(jsonObj.ToString(), Encoding.UTF8, "application/json");
             try
             {
                 var response = await client.PostAsync(@"/api/json/Feeds_GetFeed", content); // Native API
@@ -278,7 +278,7 @@ namespace updater
                 _log.Debug($"response.Content = '{strBody}'");
                 dynamic resp = JObject.Parse(strBody);
                 var feedType = resp.FeedType_Name.ToString();
-                _log.Information("Определили тип фида {ProGetFeed} как {feedType}", $"{progetUrl}feeds/{feedName}", feedType.ToString().ToLower());
+                _log.Information("Определили тип фида {ProGetFeed} как {feedType}", $"{progetUrl}/feeds/{feedName}", feedType.ToString().ToLower());
                 return feedType;
             }
             catch (Exception e)
@@ -299,7 +299,7 @@ namespace updater
             client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
             dynamic jsonObj = new JObject();
             jsonObj.Feed_Name = feedName;
-            var content = new StringContent(jsonObj.ToString(), System.Text.Encoding.UTF8, "application/json");
+            var content = new StringContent(jsonObj.ToString(), Encoding.UTF8, "application/json");
             try
             {
                 var response = await client.PostAsync(@"/api/json/Feeds_GetFeed", content); // Native API
