@@ -211,7 +211,7 @@ namespace updater
                 .Enrich.WithProperty("Version", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion)
                 .Enrich.WithProperty("ProgramName", "NeoUpdater")
                 .WriteTo.File(path: logPath, formatter: formatter, rollingInterval: RollingInterval.Hour);
-            logger = logger.WriteTo.Seq("http://127.0.0.1:5341", restrictedToMinimumLevel: LogEventLevel.Debug);
+            logger = logger.WriteTo.Seq("http://127.0.0.1:5341");
             Log.Logger = logger.CreateLogger();
         }
 

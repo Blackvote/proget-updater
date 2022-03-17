@@ -47,7 +47,7 @@ namespace updater
                 _log.Information("Синхронизируем фид {DestinationFeed} прогета {DestinationProGet} с фидом {SourceFeedName} прогета {SourceProGet}", feedConfig.DestProGetFeedName, feedConfig.DestProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetUrl);
                 var sourceType = await _proGet.GetFeedTypeAsync(feedConfig.SourceProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetApiKey);
                 var destType = await _proGet.GetFeedTypeAsync(feedConfig.DestProGetUrl, feedConfig.DestProGetFeedName, feedConfig.DestProGetApiKey);
-                if(sourceType.ToLower() == destType.ToLower()) { 
+                if (sourceType.ToLower() == destType.ToLower()) { 
                     switch (sourceType.ToLower())
                     {
                         case "universal":
@@ -199,14 +199,18 @@ namespace updater
             {
                 dynamic packageDynamic = JObject.Parse(package.Value);
                 string id = packageDynamic.id.ToString();
-                string version = packageDynamic.version.ToString();
 
-                if (!destPackageList.ContainsKey(id + "_" + version))
+                foreach (var versionData in packageDynamic.versions)
                 {
-                    _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestProGetFeed}}, выкачиваю и выкладываю.", 
-                        id, version, $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
-                    await _proGet.GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, id, version, TempDir);
-                    await _proGet.PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, id, version, TempDir);
+                    string version = versionData.version;
+
+                    if (!destPackageList.ContainsKey(id + "_" + version))
+                    {
+                        _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestProGetFeed}}, выкачиваю и выкладываю.",
+                            id, version, $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
+                        await _proGet.GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, id, version, TempDir);
+                        await _proGet.PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, id, version, TempDir);
+                    }
                 }
             }
             _log.Information("Закончил сравнение nuget-фидов");
