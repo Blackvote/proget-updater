@@ -5,10 +5,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Security;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
+using updater.DataModels;
 
 namespace updater
 {
@@ -167,8 +167,8 @@ namespace updater
 
         private async Task SyncNuGetFeedsTask(ProGetConfig proGetConfig)
         {
-            var sourcePackageList = new Dictionary<string, string>();
-            var destPackageList = new Dictionary<string, string>();
+            var sourcePackageList = new Dictionary<string, PackageData>();
+            var destPackageList = new Dictionary<string, PackageData>();
 
             try
             {
@@ -195,25 +195,25 @@ namespace updater
             }
 
             _log.Information("Приступаю к сравнению nuget-фидов");
-            foreach (var package in sourcePackageList)
+
+            var packagesForSync = sourcePackageList.Where(p => !destPackageList.ContainsKey(p.Key)).ToDictionary(k => k.Key, v => v.Value);
+            if (packagesForSync.Count == 0)
             {
-                dynamic packageDynamic = JObject.Parse(package.Value);
-                string id = packageDynamic.id.ToString();
-
-                foreach (var versionData in packageDynamic.versions)
-                {
-                    string version = versionData.version;
-
-                    if (!destPackageList.ContainsKey(id + "_" + version))
-                    {
-                        _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestProGetFeed}}, выкачиваю и выкладываю.",
-                            id, version, $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
-                        await _proGet.GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, id, version, TempDir);
-                        await _proGet.PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, id, version, TempDir);
-                    }
-                }
+                _log.Information($"Нет nuget-пакетов для синхронизации в фидах {proGetConfig.SourceProGetFeedName} и {proGetConfig.DestProGetFeedName}.");
+                return;
             }
-            _log.Information("Закончил сравнение nuget-фидов");
+
+            foreach (var package in packagesForSync)
+            {
+                string id = package.Value.Id;
+                string version = package.Value.Version;
+
+                _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestProGetFeed}}, выкачиваю и выкладываю.",
+                    id, version, $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
+                await _proGet.GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, id, version, TempDir);
+                await _proGet.PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, id, version, TempDir);
+            }
+            _log.Information($"Закончил сравнение nuget-фидов {proGetConfig.SourceProGetFeedName} и {proGetConfig.DestProGetFeedName}");
         }
 
         private async Task SyncVsixFeedsTask(ProGetConfig proGetConfig)

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using updater.DataModels;
 
 namespace updater
 {
@@ -19,11 +20,11 @@ namespace updater
             _log = Log.Logger.ForContext("ClassType", GetType());
         }
 
-        public async Task<Dictionary<string, string>> GetNugetFeedPackageListAsync(string progetUrl, string feedName, string apiKey)
+        public async Task<Dictionary<string, PackageData>> GetNugetFeedPackageListAsync(string progetUrl, string feedName, string apiKey)
         {
             // ODATA (v2), used: https://proget.netsrv.it:38443/nuget/seqplug/Packages?$format=json
             // JSON-LD (v3) API, disabled for feed by-default: https://proget.netsrv.it:38443/nuget/seqplug/v3/index.json
-            Dictionary<string, string> packageList = new Dictionary<string, string>();
+            Dictionary<string, PackageData> packageList = new Dictionary<string, PackageData>();
             var client = new HttpClient
             {
                 BaseAddress = new Uri(progetUrl)
@@ -50,7 +51,13 @@ namespace updater
 
                     var packageName = id + "_" + version;
 
-                    packageList.Add(packageName, package.ToString());
+                    var data = new PackageData
+                    {
+                        Id = id,
+                        Version = version
+                    };
+
+                    packageList.Add(packageName, data);
                 }
             }
             return packageList;
