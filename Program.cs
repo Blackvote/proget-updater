@@ -1,4 +1,5 @@
 ﻿using Serilog;
+using Serilog.Events;
 using Serilog.Formatting.Compact;
 using System;
 using System.Collections.Generic;
@@ -26,7 +27,7 @@ namespace updater
             InitLogger();
             _log = Log.Logger;
             _log.Information("Start application '{app}', version: {ver}", "updater", FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
-            _log.Information("Process ID = {Id}", Process.GetCurrentProcess().Id);
+            _log.Information("Process ID = {Id}", Environment.ProcessId);
 
             // See https://docs.microsoft.com/en-us/dotnet/api/system.platformid?view=netcore-3.1
             // and https://docs.microsoft.com/en-us/dotnet/api/system.operatingsystem.islinux?view=net-5.0
@@ -50,7 +51,7 @@ namespace updater
                 default:
                     // MacOSX (6) - The operating system is Macintosh. This value was returned by Silverlight. On .NET Core, its replacement is Unix.
                     // Xbox (5) - The development platform is Xbox 360. This value is no longer in use.
-                    _log.Error("Unknown platformID: {platformID}", platformID);
+                    _log.Fatal("Unknown platformID: {platformID}", platformID);
                     Environment.Exit(5);
                     break;
             }
@@ -63,11 +64,11 @@ namespace updater
                 if (args[0] == "--replace-restart")
                 {
                     _log.Information("Found cmd-line option: '--replace-restart'");
-                    ReplaceRestart();
+                    await ReplaceRestart();
                 }
                 else
                 {
-                    _log.Error("Unknown option: '{option}'!", args[0]);
+                    _log.Fatal("Unknown option: '{option}'!", args[0]);
                     Environment.Exit(1);
                 }
             }
@@ -75,6 +76,7 @@ namespace updater
             try
             {
                 ConfigReader = new ConfigReader();
+                await ConfigReader.ReadConfigAsync();
             }
             catch(Exception e) {
                 _log.Error("Error reading configuration: {error}", e.Message);
@@ -89,8 +91,9 @@ namespace updater
                     sync.CleanUpDirs();
                     await selfUpdate.IsUpdateNeeded();
                     await sync.CheckTask();
+
                     _log.Information("Waiting 60 second");
-                    Thread.Sleep(60000);
+                    await Task.Delay(TimeSpan.FromSeconds(60));
                 }
                 catch (Exception e)
                 {
@@ -98,10 +101,12 @@ namespace updater
                 }
             }
         }
-        public static void ReplaceRestart()
+        public static async Task ReplaceRestart()
         {
             var productVersion = FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion;
-            Thread.Sleep(3000);
+
+            _log.Verbose("Wait for 3 seconds.");
+            await Task.Delay(TimeSpan.FromSeconds(3));
 
             var exeDir = new DirectoryInfo(Path.TrimEndingDirectorySeparator(AppDomain.CurrentDomain.BaseDirectory));
             var exeDirFullName = exeDir.FullName;
@@ -152,11 +157,14 @@ namespace updater
                 foreach (var file in dirTarget.GetFiles())
                     file.Delete();
 
-                Thread.Sleep(1000);
+                _log.Verbose("Delay for 1 second.");
+                await Task.Delay(TimeSpan.FromSeconds(1));
 
                 _log.Information("Copy files from dir '{dirSourceFullName}' into dir '{dirTargetFullName}'", dirSource.FullName, dirTarget.FullName);
                 CopyFilesRecursively(dirSource, dirTarget);
-                Thread.Sleep(3000);
+
+                _log.Verbose("Delay for 3 seconds");
+                await Task.Delay(TimeSpan.FromSeconds(3));
             }
             catch (Exception e)
             {
@@ -188,7 +196,7 @@ namespace updater
                 _log.Information("Process for 'updater' was started sucessfull. New process ID = {Id}", newProcess.Id);
                 exitCode = 10;
             }
-            _log.Information("Finish the process ID = {Id}. ExitCode = {ExitCode}", Process.GetCurrentProcess().Id, exitCode);
+            _log.Information("Finish the process ID = {Id}. ExitCode = {ExitCode}", Environment.ProcessId, exitCode);
             Environment.Exit(exitCode); // Stop updater2.exe
         }
 

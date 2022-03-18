@@ -5,9 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Reflection;
-using System.Threading;
+using System.Security;
+using System.Threading.Tasks;
 
 namespace updater
 {
@@ -16,40 +18,27 @@ namespace updater
         public ProgramConfig _config;
         public ILogger _log;
 
+        private ProGet _proGet;
 
         public SelfUpdate()
         {
             _config = ProgramConfig.Instance;
             _log = Log.Logger.ForContext("ClassType", GetType());
+
+            _proGet = new ProGet();
         }
 
-        public async System.Threading.Tasks.Task IsUpdateNeeded()
+        public async Task IsUpdateNeeded()
         {
-            var apiKey = new NetworkCredential("", _config.ProGetConfigs[0].SourceProGetApiKey).SecurePassword;
-
-            var endpoint = new UniversalFeedEndpoint(new Uri($"{_config.ProGetConfigs[0].SourceProGetUrl}/upack/Updater"), "api", apiKey);
-
-            var feed = new UniversalFeedClient(endpoint);
-
-            IReadOnlyList<RemoteUniversalPackage> packages;
-            try
-            {
-                packages = await feed.ListPackagesAsync("", null);
-            }
-            catch(Exception ex)
-            {
-                _log.Error("Feed upack/Updater error access. {exception}", ex);
-                return;
-            }
-
-            if (packages.Count == 0)
+            (RemoteUniversalPackage remotePackage, UniversalFeedClient feed) = await FindLatestVersion();
+            if (remotePackage == null || feed == null)
             {
                 _log.Information("There aren't Updater's packages.");
                 return;
             }
 
             var currentVersion = new Version(FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
-            var latestVersion = new Version(packages[0].LatestVersion.ToString());
+            var latestVersion = new Version(remotePackage.LatestVersion.ToString());
             _log.Information("Current version: {currentVersion}", currentVersion.ToString());
             _log.Information("Latest version in repository: {latestVersion}", latestVersion.ToString());
 
@@ -57,12 +46,12 @@ namespace updater
             var olddir = Path.Combine(dir, FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
             if (currentVersion.CompareTo(latestVersion) < 0) // currentVersion is less than latestVersion. See https://docs.microsoft.com/en-us/dotnet/api/system.version.compareto?view=netcore-3.1
             {
-                _log.Information("Found new version: {newVersion}, download and update", packages[0].LatestVersion);
+                _log.Information("Found new version: {newVersion}, download and update", remotePackage.LatestVersion);
 
                 try
                 {
-                    using var packageStream = await feed.GetPackageStreamAsync(packages[0].FullName, packages[0].LatestVersion);
-                    using var fileStream = File.Create(Path.Combine(dir, $"{packages[0].LatestVersion}.upack"));
+                    using var packageStream = await feed.GetPackageStreamAsync(remotePackage.FullName, remotePackage.LatestVersion);
+                    using var fileStream = File.Create(Path.Combine(dir, $"{remotePackage.LatestVersion}.upack"));
                     await packageStream.CopyToAsync(fileStream);
                 }
                 catch (Exception e)
@@ -70,8 +59,8 @@ namespace updater
                     _log.Error("Got error while save new version: {reason}", e.Message);
                 }
 
-                _log.Information("Successfully download {ver}, installing", packages[0].LatestVersion);
-                var newdir = Path.Combine(dir, $"{packages[0].LatestVersion}");
+                _log.Information("Successfully download {ver}, installing", remotePackage.LatestVersion);
+                var newdir = Path.Combine(dir, $"{remotePackage.LatestVersion}");
                 if (Directory.Exists(newdir))
                 {
                     _log.Verbose("Cleanup: remove existing directory '{newdir}'", newdir);
@@ -86,11 +75,11 @@ namespace updater
                 }
                 try
                 {
-                    using (var package = new UniversalPackage($"{packages[0].LatestVersion}.upack"))
+                    using (var package = new UniversalPackage($"{remotePackage.LatestVersion}.upack"))
                     {
                         await package.ExtractContentItemsAsync(newdir);
                     }
-                    _log.Information("Successfully unzip archive {ver}, updating", packages[0].LatestVersion);
+                    _log.Information("Successfully unzip archive {ver}, updating", remotePackage.LatestVersion);
                 }
                 catch (Exception e)
                 {
@@ -114,7 +103,7 @@ namespace updater
                 }
 
                 if (Program.IsLinux)
-                    Chmod("0750", Path.Combine(newdir, Program.ExeFileName));
+                    await ChmodAsync("0750", Path.Combine(newdir, Program.ExeFileName));
 
                 if (Directory.Exists(olddir))
                 {
@@ -128,7 +117,9 @@ namespace updater
                         _log.Warning(e, "Can not delete directory '{olddir}'!", olddir);
                     }
                 }
-                Thread.Sleep(1000);
+
+                _log.Verbose("Delay for 1 second");
+                await Task.Delay(TimeSpan.FromSeconds(1));
 
                 _log.Information("Start application {app} ...", "updater --replace-restart");
                 var processInfo = new ProcessStartInfo
@@ -155,7 +146,7 @@ namespace updater
                     _log.Information("Process for 'updater --replace-restart' was started sucessfull. New process ID = {Id}", newProcess.Id);
                     exitCode = 10;
                 }
-                _log.Information("Finish the process ID = {Id}. ExitCode = {ExitCode}", Process.GetCurrentProcess().Id, exitCode);
+                _log.Information("Finish the process ID = {Id}. ExitCode = {ExitCode}", Environment.ProcessId, exitCode);
                 Environment.Exit(exitCode); // Stop updater
             }
             else
@@ -176,7 +167,51 @@ namespace updater
             }
         }
 
-        private void Chmod(string permission, string fullFileName)
+        private async Task<(RemoteUniversalPackage package, UniversalFeedClient feedWithLastVersion)> FindLatestVersion()
+        {
+            RemoteUniversalPackage package = null;
+            Version latestVersion = null;
+            UniversalFeedClient feedWithLastVersion = null;
+
+            foreach (var config in _config.ProGetConfigs)
+            {
+                string sourceType = await _proGet.GetFeedTypeAsync(config.DestProGetUrl, config.DestProGetFeedName, config.DestProGetApiKey);
+                if (sourceType.ToLower() == "universal")
+                {
+                    SecureString destApiKey = new NetworkCredential("", config.DestProGetApiKey).SecurePassword;
+                    var destEndpoint = new UniversalFeedEndpoint(new Uri($"{config.DestProGetUrl}/upack/{config.DestProGetFeedName}"), "api", destApiKey);
+                    var destFeed = new UniversalFeedClient(destEndpoint);
+
+                    IReadOnlyList<RemoteUniversalPackage> packages;
+                    try
+                    {
+                        packages = await destFeed.ListPackagesAsync("", null);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.Error("Feed upack/Updater error access. {exception}", ex);
+                        continue;
+                    }
+
+                    var updaterPackage = packages.FirstOrDefault(p => p.Group == "utils" && p.Name == "updater");
+                    if (updaterPackage != null)
+                    {
+                        Version latestVersionInFeed = new Version(updaterPackage.LatestVersion.ToString());
+
+                        if (latestVersion == null || latestVersion < latestVersionInFeed)
+                        {
+                            package = updaterPackage;
+                            latestVersion = latestVersionInFeed;
+                            feedWithLastVersion = destFeed;
+                        }
+                    }
+                }
+            }
+
+            return (package, feedWithLastVersion);
+        }
+
+        private async Task ChmodAsync(string permission, string fullFileName)
         {
             var process = new Process
             {
@@ -191,7 +226,7 @@ namespace updater
                 }
             };
             process.Start();
-            process.WaitForExit();
+            await process.WaitForExitAsync();
         }
 
     }
