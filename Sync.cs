@@ -41,13 +41,13 @@ namespace updater
 
         public async Task CheckTask()
         {
-
             foreach (var feedConfig in _programConfig.ProGetConfigs)
             {
                 _log.Information("Синхронизируем фид {DestinationFeed} прогета {DestinationProGet} с фидом {SourceFeedName} прогета {SourceProGet}", feedConfig.DestProGetFeedName, feedConfig.DestProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetUrl);
                 var sourceType = await _proGet.GetFeedTypeAsync(feedConfig.SourceProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetApiKey);
                 var destType = await _proGet.GetFeedTypeAsync(feedConfig.DestProGetUrl, feedConfig.DestProGetFeedName, feedConfig.DestProGetApiKey);
-                if (sourceType.ToLower() == destType.ToLower()) { 
+                if (string.Equals(sourceType, destType, StringComparison.OrdinalIgnoreCase))
+                {
                     switch (sourceType.ToLower())
                     {
                         case "universal":
@@ -74,28 +74,34 @@ namespace updater
         private async Task SyncUniversalFeedsTask(ProGetConfig proGetConfig)
         {
             _log.Information("Start syncing upack-feeds");
+
             SecureString sourceApiKey = new NetworkCredential("", proGetConfig.SourceProGetApiKey).SecurePassword;
-
-            var sourceEndpoint = new UniversalFeedEndpoint(new Uri($"{proGetConfig.SourceProGetUrl}/upack/{proGetConfig.SourceProGetFeedName}"), "api", sourceApiKey);
-
+            var sourceUri = new Uri(proGetConfig.SourceProGetUrl);
+            sourceUri = new Uri(sourceUri, $"upack/{proGetConfig.SourceProGetFeedName}");
+            var sourceEndpoint = new UniversalFeedEndpoint(sourceUri, "api", sourceApiKey);
             var sourceFeed = new UniversalFeedClient(sourceEndpoint);
 
             SecureString destApiKey = new NetworkCredential("", proGetConfig.DestProGetApiKey).SecurePassword;
-
-            var destEndpoint = new UniversalFeedEndpoint(new Uri($"{proGetConfig.DestProGetUrl}/upack/{proGetConfig.DestProGetFeedName}"), "api", destApiKey);
-
+            var destUri = new Uri(proGetConfig.DestProGetUrl);
+            destUri = new Uri(destUri, $"upack/{proGetConfig.DestProGetFeedName}");
+            var destEndpoint = new UniversalFeedEndpoint(destUri, "api", destApiKey);
             var destFeed = new UniversalFeedClient(destEndpoint);
 
             var packages = await sourceFeed.ListPackagesAsync("", null);
             var dir = $"{TempDir}";
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            foreach (var p in packages)
+
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = 10
+            };
+            await Parallel.ForEachAsync(packages, parallelOptions, async (p, token) =>
             {
                 _log.Verbose("Target package {Group}/{name}", p.Group, p.Name);
                 var search = await destFeed.SearchPackagesAsync(p.Name);
                 if (!search.Any(x => x.FullName == p.FullName))
                 {
-                    _log.Information("Not found {Group}/{Name} in {dProGetFeed}, copy from {sProGetFeed}", p.Group, p.Name, 
+                    _log.Information("Not found {Group}/{Name} in {dProGetFeed}, copy from {sProGetFeed}", p.Group, p.Name,
                         $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}",
                         $"{proGetConfig.SourceProGetUrl}feeds/{proGetConfig.SourceProGetFeedName}");
                     foreach (var ver in p.AllVersions)
@@ -157,11 +163,11 @@ namespace updater
                                 //}
                             }
                         }
-                        _log.Verbose("Not found new version {Group}/{Name} in {SourceProGetFeed}", p.Group, p.Name, 
+                        _log.Verbose("Not found new version {Group}/{Name} in {SourceProGetFeed}", p.Group, p.Name,
                             $"{proGetConfig.SourceProGetUrl}feeds/{proGetConfig.SourceProGetFeedName}");
                     }
                 }
-            }
+            });
             _log.Information("Finish syncing upack-feeds");
         }
 
@@ -203,7 +209,12 @@ namespace updater
                 return;
             }
 
-            foreach (var package in packagesForSync)
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = 10
+            };
+
+            await Parallel.ForEachAsync(packagesForSync, parallelOptions, async (package, token) =>
             {
                 string id = package.Value.Id;
                 string version = package.Value.Version;
@@ -212,7 +223,7 @@ namespace updater
                     id, version, $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
                 await _proGet.GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, id, version, TempDir);
                 await _proGet.PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, id, version, TempDir);
-            }
+            });
             _log.Information($"Закончил сравнение nuget-фидов {proGetConfig.SourceProGetFeedName} и {proGetConfig.DestProGetFeedName}");
         }
 
@@ -221,13 +232,18 @@ namespace updater
             var sourcePackageList = await _proGet.GetVsixFeedPackageListAsync("источника", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey);
             var destPackageList = await _proGet.GetVsixFeedPackageListAsync("назначения", proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey);
             _log.Information("Приступаю к сравнению vsix-фидов");
-            foreach (var package in sourcePackageList)
+
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = 5
+            };
+            await Parallel.ForEachAsync(sourcePackageList, parallelOptions, async (package, token) =>
             {
                 dynamic packageDynamic = JObject.Parse(package.Value);
                 if (!destPackageList.ContainsKey(packageDynamic.Package_Id.ToString() + "_" + packageDynamic.Version.ToString()))
                 {
                     _log.Information("Не нашел vsix-пакет {PackageId} версии {PackageVersion} в {DestProGetFeed}, выкачиваю и выкладываю.",
-                        packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(), 
+                        packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(),
                         $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
 
                     await _proGet.GetVsixPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey,
@@ -236,7 +252,7 @@ namespace updater
                     await _proGet.PushVsixPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey,
                         packageDynamic.DisplayName_Text.ToString(), packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(), TempDir);
                 }
-            }
+            });
             _log.Information("Закончил сравнение vsix-фидов");
         }
 

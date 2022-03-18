@@ -179,7 +179,9 @@ namespace updater
                 if (sourceType.ToLower() == "universal")
                 {
                     SecureString destApiKey = new NetworkCredential("", config.DestProGetApiKey).SecurePassword;
-                    var destEndpoint = new UniversalFeedEndpoint(new Uri($"{config.DestProGetUrl}/upack/{config.DestProGetFeedName}"), "api", destApiKey);
+                    var uri = new Uri(config.DestProGetUrl);
+                    uri = new Uri(uri, $"/upack/{config.DestProGetFeedName}");
+                    var destEndpoint = new UniversalFeedEndpoint(uri, "api", destApiKey);
                     var destFeed = new UniversalFeedClient(destEndpoint);
 
                     IReadOnlyList<RemoteUniversalPackage> packages;
