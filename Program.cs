@@ -82,14 +82,14 @@ namespace updater
                 _log.Error("Error reading configuration: {error}", e.Message);
                 Console.ReadLine();
             }
-            SelfUpdate selfUpdate = new SelfUpdate();
+            //SelfUpdate selfUpdate = new SelfUpdate();
 
             Sync sync = new Sync();
             while (true) {
                 try
                 {
                     sync.CleanUpDirs();
-                    await selfUpdate.IsUpdateNeeded();
+                    //await selfUpdate.IsUpdateNeeded();
                     await sync.CheckTask();
 
                     _log.Information("Waiting 60 second");
