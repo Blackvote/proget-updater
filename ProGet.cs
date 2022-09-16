@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using Inedo.UPack.Packaging;
+using Newtonsoft.Json.Linq;
 using Serilog;
 using System;
 using System.Collections.Generic;
@@ -22,8 +23,8 @@ namespace updater
 
         public async Task<Dictionary<string, PackageData>> GetNugetFeedPackageListAsync(string progetUrl, string feedName, string apiKey)
         {
-            // ODATA (v2), used: https://proget.netsrv.it:38443/nuget/seqplug/Packages?$format=json
-            // JSON-LD (v3) API, disabled for feed by-default: https://proget.netsrv.it:38443/nuget/seqplug/v3/index.json
+            // ODATA (v2), used: https://proget.netsrv.it:38443/Nuget/seqplug/Packages?$format=json
+            // JSON-LD (v3) API, disabled for feed by-default: https://proget.netsrv.it:38443/Nuget/seqplug/v3/index.json
             Dictionary<string, PackageData> packageList = new Dictionary<string, PackageData>();
             var client = new HttpClient
             {
@@ -39,13 +40,13 @@ namespace updater
             {
                 string id = package.id.ToString();
 
-                _log.Information("Нашёл семейство nuget-пакетов {PackageName}", id);
+                _log.Information("Нашёл семейство Nuget-пакетов {PackageName}", id);
 
                 foreach (var ver in package.versions)
                 {
                     string version = ver.version.ToString();
 
-                    _log.Information("Нашел nuget-пакет {PackageName} версии {PackageVersion} в {ProGetFeed}",
+                    _log.Information("Нашел Nuget-пакет {PackageName} версии {PackageVersion} в {ProGetFeed}",
                         id, version,
                         $"{progetUrl}feeds/{feedName}");
 
@@ -66,7 +67,7 @@ namespace updater
         public async Task GetNugetPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string packageVersion, string downloadToDirectory)
         {
             // http://proget-server/api/v2/package/{feedName}/{packageName}/{optional-version}
-            // https://proget.netsrv.it:38443/nuget/seqplug/package/Seq.App.Exporter/1.2.3
+            // https://proget.netsrv.it:38443/Nuget/seqplug/package/Seq.App.Exporter/1.2.3
             var dir = $"{downloadToDirectory}";
             var fileName = $"{packageName}_{packageVersion}.nupkg";
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
@@ -79,13 +80,13 @@ namespace updater
                 };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
                 using var response = await client.GetAsync($"nuget/{feedName}/package/{packageName}/{packageVersion}"); // Feed API
-                using var fileStream = File.Create(fullFileName);
+                await using var fileStream = File.Create(fullFileName);
                 await response.Content.CopyToAsync(fileStream);
                 response.EnsureSuccessStatusCode();
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не получилось скачать nuget-пакет {packageName}/{packageVersion}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key",
+                _log.Error(e, "Не получилось скачать Nuget-пакет {packageName}/{packageVersion}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key",
                     packageName, packageVersion);
             }
         }
@@ -97,7 +98,7 @@ namespace updater
             var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             var fileInfo = new FileInfo(fullFileName);
             long fileSize = fileInfo.Length;
-            _log.Information("Выкладываю nuget-пакет {packageName} версии {packageVersion} в {ProGetFeed}", packageName, packageVersion, $"{progetUrl}feed/{feedName}");
+            _log.Information("Выкладываю Nuget-пакет {packageName} версии {packageVersion} в {ProGetFeed}", packageName, packageVersion, $"{progetUrl}feed/{feedName}");
             try
             {
                 var client = new HttpClient
@@ -106,7 +107,7 @@ namespace updater
                 };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
                 using var content = new MultipartFormDataContent();
-                using var fileStream = File.OpenRead(fullFileName);
+                await using var fileStream = File.OpenRead(fullFileName);
                 using var streamContent = new StreamContent(fileStream);
                 using (var fileContent = new ByteArrayContent(await streamContent.ReadAsByteArrayAsync()))
                 {
@@ -130,7 +131,7 @@ namespace updater
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не получилось загрузить nuget-пакет {packageName}/{packageVersion} в {ProGetFeed}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key",
+                _log.Error(e, "Не получилось загрузить Nuget-пакет {packageName}/{packageVersion} в {ProGetFeed}! Возможно из-за отсутствия привелегии \"Feed API\" у API-Key",
                     packageName, packageVersion, $"{progetUrl}feeds/{feedName}");
             }
         }
@@ -140,7 +141,7 @@ namespace updater
             // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/api/json/VsixPackages_GetPackages?Feed_Id=2046 -ContentType "application/json" -Headers @{"X-ApiKey" = "XXXXXXXXX"; "charset" = "utf-8"}
             // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/api/json/VsixPackages_GetPackages -ContentType "application/json" -Headers @{"X-ApiKey" = "XXXXXXXXX"; "charset" = "utf-8"} -Body (@{"Feed_Id" = 2046}|ConvertTo-Json)
             // Use 'Native API'. See https://proget.netsrv.it:38443/reference/api and https://docs.inedo.com/docs/proget/reference/api/native
-            _log.Information("Пытаюсь получить список vsix-пакетов из прогета {side} {ProGetFeed}", side, $"{progetUrl}feeds/{feedName}");
+            _log.Information("Пытаюсь получить список Vsix-пакетов из прогета {side} {ProGetFeed}", side, $"{progetUrl}feeds/{feedName}");
             Dictionary<string, string> packageList = new Dictionary<string, string>();
             var feedId = await GetFeedIdAsync(progetUrl, feedName, apiKey);
 
@@ -171,7 +172,7 @@ namespace updater
                         package.Revision_Number.ToString()
                         );
                     package.Add("Version", version.ToString());
-                    _log.Information("Нашел vsix-пакет {PackageId} версии {PackageVersion} в {ProGetFeed}",
+                    _log.Information("Нашел Vsix-пакет {PackageId} версии {PackageVersion} в {ProGetFeed}",
                         package.Package_Id.ToString(), package.Version.ToString(),
                         $"{progetUrl}feeds/{feedName}");
                     var packageName = package.Package_Id.ToString() + "_" + package.Version.ToString();
@@ -180,20 +181,20 @@ namespace updater
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не смогли получить список vsix-пакетов из прогета {side} {ProGetFeed}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key",
+                _log.Error(e, "Не смогли получить список Vsix-пакетов из прогета {side} {ProGetFeed}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key",
                     side, $"{progetUrl}feeds/{feedName}");
                 throw;
             }
-            _log.Information("Получил список vsix-пакетов из прогета {side} {ProGetFeed}", side, $"{progetUrl}feeds/{feedName}");
+            _log.Information("Получил список Vsix-пакетов из прогета {side} {ProGetFeed}", side, $"{progetUrl}feeds/{feedName}");
             return packageList;
         }
 
         public async Task GetVsixPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string Package_Id, string packageVersion, string downloadToDirectory)
         {
-            // http://proget-server/vsix/{feedName}/downloads/{Package_Id}/{packageVersion}
-            // https://proget.netsrv.it:38443/vsix/NeoGallery/downloads/MobiTemplateWizard.cae77667-8ddc-4040-acf7-f7491071af30/1.0.1
+            // http://proget-server/Vsix/{feedName}/downloads/{Package_Id}/{packageVersion}
+            // https://proget.netsrv.it:38443/Vsix/NeoGallery/downloads/MobiTemplateWizard.cae77667-8ddc-4040-acf7-f7491071af30/1.0.1
             var dir = Path.Combine(downloadToDirectory, Package_Id, packageVersion);
-            var fileName = $"{packageName}.vsix";
+            var fileName = $"{packageName}.Vsix";
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             try
@@ -210,19 +211,19 @@ namespace updater
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не получилось скачать vsix-пакет {Package_Id}/{PackageVersion}", Package_Id, packageVersion);
+                _log.Error(e, "Не получилось скачать Vsix-пакет {Package_Id}/{PackageVersion}", Package_Id, packageVersion);
             }
         }
 
         public async Task PushVsixPackageAsync(string progetUrl, string feedName, string apiKey, string packageName, string Package_Id, string packageVersion, string uploadFromDirectory)
         {
-            // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/vsix/NeoGallery -InFile.\MobiTemplateWizard.vsix - Headers @{ "X-ApiKey" = "XXXXXXXXXXXXXX"}
+            // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/Vsix/NeoGallery -InFile.\MobiTemplateWizard.Vsix - Headers @{ "X-ApiKey" = "XXXXXXXXXXXXXX"}
             var dir = $"{uploadFromDirectory}{Package_Id}/{packageVersion}/";
-            var fileName = $"{packageName}.vsix";
+            var fileName = $"{packageName}.Vsix";
             var fullFileName = dir + fileName;
             FileInfo fileInfo = new FileInfo(fullFileName);
             long fileSize = fileInfo.Length;
-            _log.Information($"Выкладываю vsix-пакет {Package_Id} версии {packageVersion} в {progetUrl}feed/{feedName}");
+            _log.Information($"Выкладываю Vsix-пакет {Package_Id} версии {packageVersion} в {progetUrl}feed/{feedName}");
             try
             {
                 var client = new HttpClient
@@ -231,7 +232,7 @@ namespace updater
                 };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
                 client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Length", $"{fileSize}");
-                using (Stream stream = File.OpenRead(fullFileName))
+                await using (Stream stream = File.OpenRead(fullFileName))
                 using (var content = new StreamContent(stream))
                 {
                     var response = await client.PostAsync($"vsix/{feedName}", content); // Feed API?
@@ -259,7 +260,7 @@ namespace updater
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не получилось загрузить vsix-пакет {PackageId}/{PackageVersion} в {ProGetFeed}",
+                _log.Error(e, "Не получилось загрузить Vsix-пакет {PackageId}/{PackageVersion} в {ProGetFeed}",
                     Package_Id, packageVersion, $"{progetUrl}feeds/{feedName}");
             }
         }
@@ -320,7 +321,7 @@ namespace updater
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не смогли определить ид фида {ProGetFeed}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key",
+                _log.Error(e, "Не смогли определить ид фида {ProGetFeed}! Возможно из-за отсутствия привилегии \"Native API\" у API-Key",
                     $"{progetUrl}feeds/{feedName}");
                 return default;
             }

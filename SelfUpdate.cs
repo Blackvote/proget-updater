@@ -50,8 +50,8 @@ namespace updater
 
                 try
                 {
-                    using var packageStream = await feed.GetPackageStreamAsync(remotePackage.FullName, remotePackage.LatestVersion);
-                    using var fileStream = File.Create(Path.Combine(dir, $"{remotePackage.LatestVersion}.upack"));
+                    await using var packageStream = await feed.GetPackageStreamAsync(remotePackage.FullName, remotePackage.LatestVersion);
+                    await using var fileStream = File.Create(Path.Combine(dir, $"{remotePackage.LatestVersion}.Upack"));
                     await packageStream.CopyToAsync(fileStream);
                 }
                 catch (Exception e)
@@ -75,7 +75,7 @@ namespace updater
                 }
                 try
                 {
-                    using (var package = new UniversalPackage($"{remotePackage.LatestVersion}.upack"))
+                    using (var package = new UniversalPackage($"{remotePackage.LatestVersion}.Upack"))
                     {
                         await package.ExtractContentItemsAsync(newdir);
                     }
@@ -180,7 +180,7 @@ namespace updater
                 {
                     SecureString destApiKey = new NetworkCredential("", config.DestProGetApiKey).SecurePassword;
                     var uri = new Uri(config.DestProGetUrl);
-                    uri = new Uri(uri, $"/upack/{config.DestProGetFeedName}");
+                    uri = new Uri(uri, $"/Upack/{config.DestProGetFeedName}");
                     var destEndpoint = new UniversalFeedEndpoint(uri, "api", destApiKey);
                     var destFeed = new UniversalFeedClient(destEndpoint);
 
@@ -191,7 +191,7 @@ namespace updater
                     }
                     catch (Exception ex)
                     {
-                        _log.Error("Feed upack/Updater error access. {exception}", ex);
+                        _log.Error("Feed Upack/Updater error access. {exception}", ex);
                         continue;
                     }
 

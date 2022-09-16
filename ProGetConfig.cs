@@ -4,8 +4,19 @@ using System.Text;
 
 namespace updater
 {
+    public enum FeedType
+    {
+        Upack,
+        Nuget,
+        Vsix
+    }
+
     public class ProGetConfig
     {
+        /// <summary>
+        ///  Тип фида
+        /// </summary>
+        public FeedType FeedType { get; set; }
 
         // ProGetArea FROM (source)
         /// <summary>

@@ -36,6 +36,7 @@ namespace updater
                         {
                             var progetConfig = new ProGetConfig
                             {
+                                FeedType = Enum.Parse<FeedType>(conf["FeedsType"].ToString(), true),
                                 SourceProGetUrl = conf["SourceProget"]["Address"].ToString(),
                                 SourceProGetFeedName = conf["SourceProget"]["FeedName"].ToString(),
                                 SourceProGetApiKey = conf["SourceProget"]["ApiKey"].ToString(),

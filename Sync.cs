@@ -44,46 +44,35 @@ namespace updater
             foreach (var feedConfig in _programConfig.ProGetConfigs)
             {
                 _log.Information("Синхронизируем фид {DestinationFeed} прогета {DestinationProGet} с фидом {SourceFeedName} прогета {SourceProGet}", feedConfig.DestProGetFeedName, feedConfig.DestProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetUrl);
-                var sourceType = await _proGet.GetFeedTypeAsync(feedConfig.SourceProGetUrl, feedConfig.SourceProGetFeedName, feedConfig.SourceProGetApiKey);
-                var destType = await _proGet.GetFeedTypeAsync(feedConfig.DestProGetUrl, feedConfig.DestProGetFeedName, feedConfig.DestProGetApiKey);
-                if (string.Equals(sourceType, destType, StringComparison.OrdinalIgnoreCase))
+
+                switch (feedConfig.FeedType)
                 {
-                    switch (sourceType.ToLower())
-                    {
-                        case "universal":
-                            await SyncUniversalFeedsTask(feedConfig);
-                            break;
-                        case "nuget":
-                            await SyncNuGetFeedsTask(feedConfig);
-                            break;
-                        case "vsix":
-                            await SyncVsixFeedsTask(feedConfig);
-                            break;
-                        default:
-                            _log.Error("Фид имеет неизвестный тип '{sourceType}', синхронизация невозможна!", sourceType.ToLower());
-                            break;
-                    }
-                }
-                else
-                {
-                    _log.Error("Фиды имеют разный тип ('{sourceType}' != '{destType}'), синхронизация невозможна!", sourceType.ToLower(), destType.ToLower());
+                    case FeedType.Upack:
+                        await SyncUniversalFeedsTask(feedConfig);
+                        break;
+                    case FeedType.Nuget:
+                        await SyncNuGetFeedsTask(feedConfig);
+                        break;
+                    case FeedType.Vsix:
+                        await SyncVsixFeedsTask(feedConfig);
+                        break;
                 }
             }
         }
         
         private async Task SyncUniversalFeedsTask(ProGetConfig proGetConfig)
         {
-            _log.Information("Start syncing upack-feeds");
+            _log.Information("Start syncing Upack-feeds");
 
             SecureString sourceApiKey = new NetworkCredential("", proGetConfig.SourceProGetApiKey).SecurePassword;
             var sourceUri = new Uri(proGetConfig.SourceProGetUrl);
-            sourceUri = new Uri(sourceUri, $"upack/{proGetConfig.SourceProGetFeedName}");
+            sourceUri = new Uri(sourceUri, $"Upack/{proGetConfig.SourceProGetFeedName}");
             var sourceEndpoint = new UniversalFeedEndpoint(sourceUri, "api", sourceApiKey);
             var sourceFeed = new UniversalFeedClient(sourceEndpoint);
 
             SecureString destApiKey = new NetworkCredential("", proGetConfig.DestProGetApiKey).SecurePassword;
             var destUri = new Uri(proGetConfig.DestProGetUrl);
-            destUri = new Uri(destUri, $"upack/{proGetConfig.DestProGetFeedName}");
+            destUri = new Uri(destUri, $"Upack/{proGetConfig.DestProGetFeedName}");
             var destEndpoint = new UniversalFeedEndpoint(destUri, "api", destApiKey);
             var destFeed = new UniversalFeedClient(destEndpoint);
 
@@ -99,20 +88,20 @@ namespace updater
             {
                 _log.Verbose("Target package {Group}/{name}", p.Group, p.Name);
                 var search = await destFeed.SearchPackagesAsync(p.Name);
-                if (!search.Any(x => x.FullName == p.FullName))
+                if (search.All(x => x.FullName != p.FullName))
                 {
                     _log.Information("Not found {Group}/{Name} in {dProGetFeed}, copy from {sProGetFeed}", p.Group, p.Name,
                         $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}",
                         $"{proGetConfig.SourceProGetUrl}feeds/{proGetConfig.SourceProGetFeedName}");
                     foreach (var ver in p.AllVersions)
                     {
-                        var file = Path.Combine(dir, $"{p.Group}_{p.Name}_{ver}.upack");
-                        using (var packageStream = await sourceFeed.GetPackageStreamAsync(p.FullName, ver))
-                        using (var fileStream = File.Create(file))
+                        var file = Path.Combine(dir, $"{p.Group}_{p.Name}_{ver}.Upack");
+                        await using (var packageStream = await sourceFeed.GetPackageStreamAsync(p.FullName, ver))
+                        await using (var fileStream = File.Create(file))
                         {
                             await packageStream.CopyToAsync(fileStream);
                         }
-                        using (var fileStream = File.OpenRead(file))
+                        await using (var fileStream = File.OpenRead(file))
                         {
                             _log.Information("Copying package {Group}/{Name} {Version} to {ProGetUrl}", p.Group, p.Name, ver, proGetConfig.DestProGetUrl);
                             await destFeed.UploadPackageAsync(fileStream);
@@ -140,13 +129,13 @@ namespace updater
                         {
                             if (!pack.AllVersions.Contains(ver))
                             {
-                                var file = Path.Combine(dir, $"{p.Group}_{p.Name}_{ver}.upack");
-                                using (var packageStream = await sourceFeed.GetPackageStreamAsync(p.FullName, ver))
-                                using (var fileStream = File.Create(file))
+                                var file = Path.Combine(dir, $"{p.Group}_{p.Name}_{ver}.Upack");
+                                await using (var packageStream = await sourceFeed.GetPackageStreamAsync(p.FullName, ver))
+                                await using (var fileStream = File.Create(file))
                                 {
                                     await packageStream.CopyToAsync(fileStream);
                                 }
-                                using (var fileStream = File.OpenRead(file))
+                                await using (var fileStream = File.OpenRead(file))
                                 {
                                     _log.Information("Copying package {Group}/{Package} to {ProGetUrl}", p.Group, p.Name, proGetConfig.DestProGetUrl);
                                     await destFeed.UploadPackageAsync(fileStream);
@@ -168,7 +157,7 @@ namespace updater
                     }
                 }
             });
-            _log.Information("Finish syncing upack-feeds");
+            _log.Information("Finish syncing Upack-feeds");
         }
 
         private async Task SyncNuGetFeedsTask(ProGetConfig proGetConfig)
@@ -178,34 +167,34 @@ namespace updater
 
             try
             {
-                _log.Information("Пытаюсь получить список nuget-пакетов из прогета источника {SourceProGetFeed}", 
+                _log.Information("Пытаюсь получить список Nuget-пакетов из прогета источника {SourceProGetFeed}", 
                     $"{proGetConfig.SourceProGetUrl}feeds/{proGetConfig.SourceProGetFeedName}");
                 sourcePackageList = await _proGet.GetNugetFeedPackageListAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey);
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не смог получить список nuget-пакетов из прогета источника {SourceProGetFeed}", 
+                _log.Error(e, "Не смог получить список Nuget-пакетов из прогета источника {SourceProGetFeed}", 
                     $"{proGetConfig.SourceProGetUrl}feeds/{proGetConfig.SourceProGetFeedName}");
             }
 
             try
             {
-                _log.Information("Пытаюсь получить список nuget-пакетов из прогета назначения для сравнения {DestinationProGetFeed}", 
+                _log.Information("Пытаюсь получить список Nuget-пакетов из прогета назначения для сравнения {DestinationProGetFeed}", 
                     $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
                 destPackageList = await _proGet.GetNugetFeedPackageListAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey);
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не смог получить список nuget-пакетов из прогета назначения {DestProGetFeed}", 
+                _log.Error(e, "Не смог получить список Nuget-пакетов из прогета назначения {DestProGetFeed}", 
                     $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
             }
 
-            _log.Information("Приступаю к сравнению nuget-фидов");
+            _log.Information("Приступаю к сравнению Nuget-фидов");
 
             var packagesForSync = sourcePackageList.Where(p => !destPackageList.ContainsKey(p.Key)).ToDictionary(k => k.Key, v => v.Value);
             if (packagesForSync.Count == 0)
             {
-                _log.Information($"Нет nuget-пакетов для синхронизации в фидах {proGetConfig.SourceProGetFeedName} и {proGetConfig.DestProGetFeedName}.");
+                _log.Information($"Нет Nuget-пакетов для синхронизации в фидах {proGetConfig.SourceProGetFeedName} и {proGetConfig.DestProGetFeedName}.");
                 return;
             }
 
@@ -219,19 +208,19 @@ namespace updater
                 string id = package.Value.Id;
                 string version = package.Value.Version;
 
-                _log.Information("Не нашел nuget-пакет {PackageName} версии {PackageVersion} в {DestProGetFeed}}, выкачиваю и выкладываю.",
+                _log.Information("Не нашел Nuget-пакет {PackageName} версии {PackageVersion} в {DestProGetFeed}}, выкачиваю и выкладываю.",
                     id, version, $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
                 await _proGet.GetNugetPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey, id, version, TempDir);
                 await _proGet.PushNugetPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey, id, version, TempDir);
             });
-            _log.Information($"Закончил сравнение nuget-фидов {proGetConfig.SourceProGetFeedName} и {proGetConfig.DestProGetFeedName}");
+            _log.Information($"Закончил сравнение Nuget-фидов {proGetConfig.SourceProGetFeedName} и {proGetConfig.DestProGetFeedName}");
         }
 
         private async Task SyncVsixFeedsTask(ProGetConfig proGetConfig)
         {
             var sourcePackageList = await _proGet.GetVsixFeedPackageListAsync("источника", proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey);
             var destPackageList = await _proGet.GetVsixFeedPackageListAsync("назначения", proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey);
-            _log.Information("Приступаю к сравнению vsix-фидов");
+            _log.Information("Приступаю к сравнению Vsix-фидов");
 
             var parallelOptions = new ParallelOptions
             {
@@ -242,7 +231,7 @@ namespace updater
                 dynamic packageDynamic = JObject.Parse(package.Value);
                 if (!destPackageList.ContainsKey(packageDynamic.Package_Id.ToString() + "_" + packageDynamic.Version.ToString()))
                 {
-                    _log.Information("Не нашел vsix-пакет {PackageId} версии {PackageVersion} в {DestProGetFeed}, выкачиваю и выкладываю.",
+                    _log.Information("Не нашел Vsix-пакет {PackageId} версии {PackageVersion} в {DestProGetFeed}, выкачиваю и выкладываю.",
                         packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(),
                         $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
 
@@ -253,15 +242,15 @@ namespace updater
                         packageDynamic.DisplayName_Text.ToString(), packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(), TempDir);
                 }
             });
-            _log.Information("Закончил сравнение vsix-фидов");
+            _log.Information("Закончил сравнение Vsix-фидов");
         }
 
         public void CleanUpDirs()
         {
             var dirsList = new List<string>() {
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"packages"), // old place for temporary nuget-packages
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"packages"), // old place for temporary Nuget-packages
                 @"C:\temp\updater\", // old place, Windows preffered
-                $"{TempDir}" // current place for temporary packages (upack, nuget, vsix)
+                $"{TempDir}" // current place for temporary packages (Upack, Nuget, Vsix)
             };
             foreach (var dir in dirsList)
             {

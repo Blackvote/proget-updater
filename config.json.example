@@ -1,4 +1,5 @@
 ﻿[{
+  "FeedsType": "upack",
   "SourceProget": {
     "Address": "https://proget.netsrv.it:38443/",
     "FeedName": "seqplug",
@@ -11,6 +12,7 @@
   }
 },
 {
+  "FeedsType": "upack",
   "SourceProget": {
     "Address": "https://proget.netsrv.it:38443/",
     "FeedName": "Test",
