@@ -6,8 +6,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml;
+using System.Xml.Linq;
+using ServiceStack.Text;
 using updater.DataModels;
 
 namespace updater
@@ -26,12 +30,9 @@ namespace updater
             // ODATA (v2), used: https://proget.netsrv.it:38443/Nuget/seqplug/Packages?$format=json
             // JSON-LD (v3) API, disabled for feed by-default: https://proget.netsrv.it:38443/Nuget/seqplug/v3/index.json
             Dictionary<string, PackageData> packageList = new Dictionary<string, PackageData>();
-            var client = new HttpClient
-            {
-                BaseAddress = new Uri(progetUrl)
-            };
+            using var client = new HttpClient { BaseAddress = new Uri(progetUrl) };
             client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
-            var response = await client.GetAsync($@"nuget/{feedName}/v3/search"); // Feed API
+            using var response = await client.GetAsync($@"nuget/{feedName}/v3/search"); // Feed API
             response.EnsureSuccessStatusCode();
             var strBody = await response.Content.ReadAsStringAsync();
             _log.Debug("response.Content = '{0}'", strBody);
@@ -40,13 +41,13 @@ namespace updater
             {
                 string id = package.id.ToString();
 
-                _log.Information("Нашёл семейство Nuget-пакетов {PackageName}", id);
+                _log.Debug("Нашёл семейство Nuget-пакетов {PackageName}", id);
 
                 foreach (var ver in package.versions)
                 {
                     string version = ver.version.ToString();
 
-                    _log.Information("Нашел Nuget-пакет {PackageName} версии {PackageVersion} в {ProGetFeed}",
+                    _log.Debug("Нашел Nuget-пакет {PackageName} версии {PackageVersion} в {ProGetFeed}",
                         id, version,
                         $"{progetUrl}feeds/{feedName}");
 
@@ -74,10 +75,7 @@ namespace updater
             var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             try
             {
-                var client = new HttpClient
-                {
-                    BaseAddress = new Uri(progetUrl)
-                };
+                using var client = new HttpClient { BaseAddress = new Uri(progetUrl) };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
                 using var response = await client.GetAsync($"nuget/{feedName}/package/{packageName}/{packageVersion}"); // Feed API
                 await using var fileStream = File.Create(fullFileName);
@@ -101,10 +99,7 @@ namespace updater
             _log.Information("Выкладываю Nuget-пакет {packageName} версии {packageVersion} в {ProGetFeed}", packageName, packageVersion, $"{progetUrl}feed/{feedName}");
             try
             {
-                var client = new HttpClient
-                {
-                    BaseAddress = new Uri(progetUrl)
-                };
+                using var client = new HttpClient { BaseAddress = new Uri(progetUrl) };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
                 using var content = new MultipartFormDataContent();
                 await using var fileStream = File.OpenRead(fullFileName);
@@ -114,7 +109,7 @@ namespace updater
                     fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(@"application/octet-stream");
                     fileContent.Headers.ContentLength = fileSize;
                     content.Add(fileContent, "filename", fileName);
-                    var response = await client.PutAsync($"nuget/{feedName}/", content); // Feed API?
+                    using var response = await client.PutAsync($"nuget/{feedName}/", content); // Feed API?
                     _log.Debug("response: StatusCode = '{StatusCode}', ReasonPhrase = '{ReasonPhrase}'", response.StatusCode, response.ReasonPhrase);
                     response.EnsureSuccessStatusCode();
                 }
@@ -136,55 +131,52 @@ namespace updater
             }
         }
 
-        public async Task<Dictionary<string, string>> GetVsixFeedPackageListAsync(string side, string progetUrl, string feedName, string apiKey)
+        public async Task<Dictionary<string, (string, string)>> GetVsixFeedPackageListAsync(string side, string progetUrl, string feedName, string apiKey)
         {
             // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/api/json/VsixPackages_GetPackages?Feed_Id=2046 -ContentType "application/json" -Headers @{"X-ApiKey" = "XXXXXXXXX"; "charset" = "utf-8"}
             // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/api/json/VsixPackages_GetPackages -ContentType "application/json" -Headers @{"X-ApiKey" = "XXXXXXXXX"; "charset" = "utf-8"} -Body (@{"Feed_Id" = 2046}|ConvertTo-Json)
             // Use 'Native API'. See https://proget.netsrv.it:38443/reference/api and https://docs.inedo.com/docs/proget/reference/api/native
             _log.Information("Пытаюсь получить список Vsix-пакетов из прогета {side} {ProGetFeed}", side, $"{progetUrl}feeds/{feedName}");
-            Dictionary<string, string> packageList = new Dictionary<string, string>();
-            var feedId = await GetFeedIdAsync(progetUrl, feedName, apiKey);
-
-            var client = new HttpClient
-            {
-                BaseAddress = new Uri(progetUrl)
-            };
+            Dictionary<string, (string, string)> packageList = new Dictionary<string, (string, string)>();
+            using var client = new HttpClient { BaseAddress = new Uri(progetUrl) };
             client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
-            dynamic jsonObj = new JObject();
-            jsonObj.Feed_Id = feedId;
-            _log.Debug("request.body = '{0}'", jsonObj.ToString());
-            var content = new StringContent(jsonObj.ToString(), Encoding.UTF8, "application/json");
             try
             {
-                var response = await client.PostAsync(@"/api/json/VsixPackages_GetPackages", content); // Native API
-                response.EnsureSuccessStatusCode();
-                var strBody = await response.Content.ReadAsStringAsync();
-                _log.Debug("response.Content = '{0}'", strBody);
-                dynamic resp = JArray.Parse(strBody);
-                foreach (var package in resp)
+                string xml;
+                using (HttpResponseMessage response = await client.GetAsync($"vsix/{feedName}/atom.xml"))
                 {
-                    // DisplayName_Text, Package_Id
-                    // Major_Number, Minor_Number, Build_Number, Revision_Number
-                    string version = CombineVersion(
-                        package.Major_Number.ToString(),
-                        package.Minor_Number.ToString(),
-                        package.Build_Number.ToString(),
-                        package.Revision_Number.ToString()
-                        );
-                    package.Add("Version", version.ToString());
-                    _log.Information("Нашел Vsix-пакет {PackageId} версии {PackageVersion} в {ProGetFeed}",
-                        package.Package_Id.ToString(), package.Version.ToString(),
-                        $"{progetUrl}feeds/{feedName}");
-                    var packageName = package.Package_Id.ToString() + "_" + package.Version.ToString();
-                    packageList.Add(packageName, package.ToString());
+                    response.EnsureSuccessStatusCode();
+                    xml = await response.Content.ReadAsStringAsync();
+                }
+
+                XmlDocument xDoc = new XmlDocument();
+                xDoc.LoadXml(xml);
+
+                XmlNamespaceManager namespaceManager = new XmlNamespaceManager(xDoc.NameTable);
+                namespaceManager.AddNamespace("w3s", "http://www.w3.org/2005/Atom");
+                namespaceManager.AddNamespace("ms", "http://schemas.microsoft.com/developer/vsx-syndication-schema/2010");
+
+                string packageName = xDoc.SelectSingleNode("w3s:feed/w3s:entry/w3s:title", namespaceManager)?.InnerText;
+                XmlNodeList vsixNodes = xDoc.SelectNodes("w3s:feed/w3s:entry/ms:Vsix", namespaceManager);
+                if (vsixNodes != null && vsixNodes.Count > 0)
+                {
+                    foreach (XmlNode node in vsixNodes)
+                    {
+                        string id = node.SelectSingleNode("ms:Id", namespaceManager)?.InnerText;
+                        string version = node.SelectSingleNode("ms:Version", namespaceManager)?.InnerText;
+
+                        if (id != null)
+                            packageList.TryAdd(id, (packageName, version));
+                    }
                 }
             }
             catch (Exception e)
             {
-                _log.Error(e, "Не смогли получить список Vsix-пакетов из прогета {side} {ProGetFeed}! Возможно из-за отсутствия привелегии \"Native API\" у API-Key",
-                    side, $"{progetUrl}feeds/{feedName}");
+                _log.Error(e, "Не смогли получить список Vsix-пакетов из прогета {side} {ProGetFeed}!",
+                    side, $"{progetUrl}vsix/{feedName}");
                 throw;
             }
+
             _log.Information("Получил список Vsix-пакетов из прогета {side} {ProGetFeed}", side, $"{progetUrl}feeds/{feedName}");
             return packageList;
         }
@@ -199,13 +191,10 @@ namespace updater
             var fullFileName = Path.GetFullPath(Path.Combine(dir, fileName));
             try
             {
-                var client = new HttpClient
-                {
-                    BaseAddress = new Uri(progetUrl)
-                };
+                using var client = new HttpClient { BaseAddress = new Uri(progetUrl) };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
                 using var response = await client.GetAsync($"vsix/{feedName}/downloads/{Package_Id}/{packageVersion}"); // Feed API
-                using var fileStream = File.Create(fullFileName);
+                await using var fileStream = File.Create(fullFileName);
                 await response.Content.CopyToAsync(fileStream);
                 response.EnsureSuccessStatusCode();
             }
@@ -226,16 +215,13 @@ namespace updater
             _log.Information($"Выкладываю Vsix-пакет {Package_Id} версии {packageVersion} в {progetUrl}feed/{feedName}");
             try
             {
-                var client = new HttpClient
-                {
-                    BaseAddress = new Uri(progetUrl)
-                };
+                using var client = new HttpClient { BaseAddress = new Uri(progetUrl) };
                 client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
                 client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Length", $"{fileSize}");
                 await using (Stream stream = File.OpenRead(fullFileName))
                 using (var content = new StreamContent(stream))
                 {
-                    var response = await client.PostAsync($"vsix/{feedName}", content); // Feed API?
+                    using var response = await client.PostAsync($"vsix/{feedName}", content); // Feed API?
                     _log.Debug("response: StatusCode = '{StatusCode}', ReasonPhrase = '{ReasonPhrase}'", response.StatusCode, response.ReasonPhrase);
                     response.EnsureSuccessStatusCode();
                 }
@@ -270,17 +256,14 @@ namespace updater
             // Feed Management API: https://proget.netsrv.it:38443/api/management/feeds/get/Neo
             // Native API: https://proget.netsrv.it:38443/api/json/Feeds_GetFeed?Feed_Name=Neo
             //   or '{\"Feed_Name\": \"{feedName}\"}' as JsonBody in POST request
-            var client = new HttpClient
-            {
-                BaseAddress = new Uri(progetUrl)
-            };
+            using var client = new HttpClient { BaseAddress = new Uri(progetUrl) };
             client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
             dynamic jsonObj = new JObject();
             jsonObj.Feed_Name = feedName;
             var content = new StringContent(jsonObj.ToString(), Encoding.UTF8, "application/json");
             try
             {
-                var response = await client.PostAsync(@"/api/json/Feeds_GetFeed", content); // Native API
+                using var response = await client.PostAsync(@"/api/json/Feeds_GetFeed", content); // Native API
                 response.EnsureSuccessStatusCode();
                 var strBody = await response.Content.ReadAsStringAsync();
                 _log.Debug($"response.Content = '{strBody}'");
@@ -300,7 +283,7 @@ namespace updater
         {
             // Native API: https://proget.netsrv.it:38443/api/json/Feeds_GetFeed?Feed_Name={feedName}
             //   or '{\"Feed_Name\": \"{feedName}\"}' as JsonBody in POST request
-            var client = new HttpClient
+            using var client = new HttpClient
             {
                 BaseAddress = new Uri(progetUrl)
             };
@@ -310,7 +293,7 @@ namespace updater
             var content = new StringContent(jsonObj.ToString(), Encoding.UTF8, "application/json");
             try
             {
-                var response = await client.PostAsync(@"/api/json/Feeds_GetFeed", content); // Native API
+                using var response = await client.PostAsync(@"/api/json/Feeds_GetFeed", content); // Native API
                 response.EnsureSuccessStatusCode();
                 var strBody = await response.Content.ReadAsStringAsync();
                 _log.Debug("response.Content = '{0}'", strBody);

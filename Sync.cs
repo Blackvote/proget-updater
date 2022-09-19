@@ -228,18 +228,17 @@ namespace updater
             };
             await Parallel.ForEachAsync(sourcePackageList, parallelOptions, async (package, token) =>
             {
-                dynamic packageDynamic = JObject.Parse(package.Value);
-                if (!destPackageList.ContainsKey(packageDynamic.Package_Id.ToString() + "_" + packageDynamic.Version.ToString()))
+                if (!destPackageList.ContainsKey(package.Key))
                 {
                     _log.Information("Не нашел Vsix-пакет {PackageId} версии {PackageVersion} в {DestProGetFeed}, выкачиваю и выкладываю.",
-                        packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(),
+                        package.Key, package.Value.Item2,
                         $"{proGetConfig.DestProGetUrl}feeds/{proGetConfig.DestProGetFeedName}");
 
                     await _proGet.GetVsixPackageAsync(proGetConfig.SourceProGetUrl, proGetConfig.SourceProGetFeedName, proGetConfig.SourceProGetApiKey,
-                        packageDynamic.DisplayName_Text.ToString(), packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(), TempDir);
+                        package.Value.Item1, package.Key, package.Value.Item2, TempDir);
 
                     await _proGet.PushVsixPackageAsync(proGetConfig.DestProGetUrl, proGetConfig.DestProGetFeedName, proGetConfig.DestProGetApiKey,
-                        packageDynamic.DisplayName_Text.ToString(), packageDynamic.Package_Id.ToString(), packageDynamic.Version.ToString(), TempDir);
+                        package.Value.Item1, package.Key, package.Value.Item2, TempDir);
                 }
             });
             _log.Information("Закончил сравнение Vsix-фидов");
