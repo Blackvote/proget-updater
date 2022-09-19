@@ -81,14 +81,15 @@ https://proget.netsrv.it:38443/feeds/Updater
 
 ```
 
-Для ApiKey необходимо в настройках ProGet (administration/api-keys) выставить права:
-- "Native API"
-- "Feed API"
+Для ApiKey необходимо в настройках ProGet (administration/api-keys) сгенерировать ключи для нужных фидов.
 
-## Self-Update
+Права для ключей на стороне source-proget:
+- View/Download.
 
-Утилита самообновляется на последную версию из фида/канала Updater в SourceProget первой пары Source-Target в файле 'config.json'.
-Обычно это https://proget.netsrv.it:38443/feeds/Updater
+Права на стороне destination-proget:
+- View/Download;
+- Add/Repackage;
+- Overwrite/Delete.
 
 ## Like Windows Service
 

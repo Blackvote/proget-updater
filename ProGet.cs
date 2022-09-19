@@ -136,7 +136,7 @@ namespace updater
             // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/api/json/VsixPackages_GetPackages?Feed_Id=2046 -ContentType "application/json" -Headers @{"X-ApiKey" = "XXXXXXXXX"; "charset" = "utf-8"}
             // Invoke-RestMethod -Method POST -Uri https://proget.netsrv.it:38443/api/json/VsixPackages_GetPackages -ContentType "application/json" -Headers @{"X-ApiKey" = "XXXXXXXXX"; "charset" = "utf-8"} -Body (@{"Feed_Id" = 2046}|ConvertTo-Json)
             // Use 'Native API'. See https://proget.netsrv.it:38443/reference/api and https://docs.inedo.com/docs/proget/reference/api/native
-            _log.Information("Пытаюсь получить список Vsix-пакетов из прогета {side} {ProGetFeed}", side, $"{progetUrl}feeds/{feedName}");
+            _log.Information("Пытаюсь получить список Vsix-пакетов из прогета {side} {ProGetFeed}", side, $"{progetUrl}vsix/{feedName}/atom.xml");
             Dictionary<string, (string, string)> packageList = new Dictionary<string, (string, string)>();
             using var client = new HttpClient { BaseAddress = new Uri(progetUrl) };
             client.DefaultRequestHeaders.Add("X-ApiKey", apiKey);
