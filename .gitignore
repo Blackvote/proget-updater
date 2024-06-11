@@ -1,11 +1,5 @@
-**/bin/*
-**/Debug/*
-**/obj/*
-**/output/*
-**/topush/*
-**/.vs/*
-*.bak
-*.orig
-**/.suo
-*.user
-_ReSharper.Caches/*
+.idea
+temp
+test
+packages
+config.yml

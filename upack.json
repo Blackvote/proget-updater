@@ -1,6 +1,0 @@
-{
-  "group": "utils",
-  "name": "updater",
-  "version": "2.0.1",
-  "description": "SNT-4969. Поменял парсинг информации по nuget-пакетам под новое API ProGet (на версиях >= 6.0.0); переход на .NET 5."
-}
