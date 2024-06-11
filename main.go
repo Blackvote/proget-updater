@@ -104,7 +104,7 @@ func getPackages(progetConfig ProgetConfig) ([]Package, error) {
 
 	fmt.Printf("Список пакетов: ")
 	for _, pkg := range packages {
-		fmt.Printf("%s/%s: %s ", pkg.Group, pkg.Name, strings.Join(pkg.Versions, " "))
+		fmt.Printf("%s/%s: %s | ", pkg.Group, pkg.Name, strings.Join(pkg.Versions, " "))
 	}
 	fmt.Println()
 
@@ -138,6 +138,7 @@ func syncPackages(config *Config, sourcePackages, destPackages []Package, savePa
 		for _, version := range pkg.Versions {
 			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 			if !destPackageMap[key][version] {
+				fmt.Printf("S-D %s:%s:%s not found. Syncing\n", pkg.Group, pkg.Name, version)
 				wg.Add(1)
 				go func(pkg Package, version string) {
 					defer wg.Done()
@@ -146,25 +147,30 @@ func syncPackages(config *Config, sourcePackages, destPackages []Package, savePa
 						log.Printf("Failed to sync package %s:%s: %v", pkg.Name, version, err)
 					}
 				}(pkg, version)
+			} else {
+				fmt.Printf("S-D %s:%s:%s found.\n", pkg.Group, pkg.Name, version)
 			}
 		}
 	}
-	wg.Wait()
 
 	for _, pkg := range destPackages {
 		for _, version := range pkg.Versions {
 			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 			if !sourcePackageMap[key][version] {
-				func(pkg Package, version string) {
+				wg.Add(1)
+				go func(pkg Package, version string) {
+					defer wg.Done()
 					err := deleteFile(config, pkg, version)
 					if err != nil {
-						log.Printf("Failed to sync package %s:%s: %v", pkg.Name, version, err)
+						log.Printf("Failed to sync package %s:%s: %v\n", pkg.Name, version, err)
 					}
 				}(pkg, version)
+			} else {
+				fmt.Printf("D-S %s:%s:%s found.\n", pkg.Group, pkg.Name, version)
 			}
 		}
 	}
-
+	wg.Wait()
 	return nil
 }
 

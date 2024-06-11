@@ -1,3 +1,5 @@
+## Пример заполнения файла config.yml
+
 source: # Описание Source PG/Feed, пакеты отсюда будут сравниваться с DEST PG/Feed (config.example.yml#6)
   url: "http://localhost" # URL адрес инстанса Source PG
   api_key: "30a4c00a5ce95d038577fea1d671a567" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
