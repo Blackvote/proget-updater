@@ -2,10 +2,16 @@
 
 source: # Описание Source PG/Feed, пакеты отсюда будут сравниваться с DEST PG/Feed (config.example.yml#6)
   url: "http://localhost" # URL адрес инстанса Source PG
-  api_key: "30a4c00a5ce95d038577fea1d671a567" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
+  apiKey: "30a4c00a5ce95d038577fea1d671a567" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
   feed: "first-feed" # Имя Source Feed
 
 destination: # Описание DEST PG/Feed, пакеты отсюда будут сравниваться с Source PG/Feed (config.example.yml#1)
   url: "http://localhost:8080" # URL адрес инстанса Dest PG
-  api_key: "51960d3631983c7f7bcf2e20ae1e60e" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
+  apiKey: "51960d3631983c7f7bcf2e20ae1e60e" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
   feed: "second-feed" # Имя Dest Feed
+
+ProceedPackageLimit: 10 # Кол-во обрабатываемых параллельно пакетов
+
+timeout: # Конфигурация таймаутов
+  webRequestTimeout: 30 # Таймаут обращений к апи
+  iterationTimeout: 120 # Пауза между синхронизациями
