@@ -204,11 +204,13 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt %d to get package list", attempt)
 		resp, err = client.Do(req)
+		resp.Body.Close()
 		if err == nil && resp.StatusCode == http.StatusOK {
-			defer resp.Body.Close()
 			err = json.NewDecoder(resp.Body).Decode(&packages)
 			if err != nil {
-				return nil, err
+				log.Error().Str("url", url).Msgf("Attempt %d failed to decode answer. Error: %s", attempt, err)
+				time.Sleep(3 * time.Duration(attempt) * time.Second)
+				continue
 			}
 
 			log.Info().Str("url", url).Msgf("Package count in %s/%s: %d", progetConfig.URL, progetConfig.Feed, len(packages))
@@ -226,12 +228,12 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 		}
 		if resp != nil && err == nil {
 			log.Error().Str("url", url).Msgf("Failed to get package attempt %d, Status: %s", attempt, resp.Status)
-			resp.Body.Close()
 		}
-		return packages, nil
+		time.Sleep(3 * time.Duration(attempt) * time.Second)
 	}
 	return nil, err
 }
+
 func syncPackages(ctx context.Context, config *Config, sourcePackages, destPackages []Package, savePath string) error {
 	destPackageMap := make(map[string]map[string]bool)
 	for _, pkg := range destPackages {
@@ -340,19 +342,19 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 		log.Info().Str("url", url).Msgf("Attempt download %d", attempt)
 
 		resp, err := client.Do(req)
+		resp.Body.Close()
 		if err == nil && resp.StatusCode == http.StatusOK {
-			defer resp.Body.Close()
-
 			out, err := os.Create(filePath)
 			if err != nil {
-				return err
+				log.Error().Err(err).Str("url", url).Msgf("Failed to create file")
+				time.Sleep(3 * time.Duration(attempt) * time.Second)
+				continue
 			}
-			defer out.Close()
+			out.Close()
 
 			fileSize, err := io.Copy(out, resp.Body)
 			if err != nil {
 				log.Error().Err(err).Str("url", url).Msgf("Failed to copy response body")
-				return err
 			}
 
 			fileSizeMB := float64(fileSize) / (1024 * 1024)
@@ -361,10 +363,8 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			return nil
 		}
 
-		// Закрываем тело ответа при ошибке или статусе не 200
 		if resp != nil {
 			log.Error().Str("url", url).Msgf("Failed download attempt %d, Status: %s", attempt, resp.Status)
-			resp.Body.Close()
 		}
 
 		if err != nil {
@@ -398,8 +398,8 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 		log.Info().Str("url", url).Msgf("Attempt %d upload for file %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 
 		resp, err := client.Do(req)
+		resp.Body.Close()
 		if err == nil && resp.StatusCode == http.StatusCreated {
-			defer resp.Body.Close()
 			log.Info().Str("url", url).Msgf("Success upload: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 			err = os.Remove(filePath)
 			return nil
@@ -407,7 +407,6 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 
 		if resp != nil {
 			log.Error().Str("url", url).Msgf("Failed upload attempt %d for file %s, Status: %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), resp.Status)
-			resp.Body.Close()
 		}
 
 		if err != nil {
