@@ -59,19 +59,6 @@ func init() {
 	flag.Parse()
 }
 
-func setupLogging(logFilePath string) (*os.File, error) {
-	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		return nil, err
-	}
-
-	multiWriter := io.MultiWriter(os.Stdout, logFile)
-	log.Logger = log.Output(multiWriter).With().
-		Str("app", "Updater").
-		Logger()
-	return logFile, nil
-}
-
 func main() {
 	if *logFilePath != "" {
 		logFile, err := setupLogging(*logFilePath)
@@ -150,6 +137,34 @@ func run(parentCtx context.Context) {
 	time.Sleep(time.Duration(config.Timeout.IterationTimeout) * time.Second)
 }
 
+func readConfig(configFile string) (*Config, error) {
+	data, err := ioutil.ReadFile(configFile)
+	if err != nil {
+		return nil, err
+	}
+
+	var config Config
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func setupLogging(logFilePath string) (*os.File, error) {
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return nil, err
+	}
+
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
+	log.Logger = log.Output(multiWriter).With().
+		Str("app", "Updater").
+		Logger()
+	return logFile, nil
+}
+
 func deleteDirectoryContents(dir string) error {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -171,19 +186,23 @@ func deleteDirectoryContents(dir string) error {
 	return nil
 }
 
-func readConfig(configFile string) (*Config, error) {
-	data, err := ioutil.ReadFile(configFile)
+func downloadAndUploadPackage(ctx context.Context, config *Config, pkg Package, version, savePath string) error {
+	downloadURL := fmt.Sprintf("%s/upack/%s/download/%s/%s/%s", config.Source.URL, config.Source.Feed, pkg.Group, pkg.Name, version)
+	uploadURL := fmt.Sprintf("%s/upack/%s/upload", config.Destination.URL, config.Destination.Feed)
+
+	err := os.MkdirAll(savePath, os.ModePerm)
 	if err != nil {
-		return nil, err
+		log.Error().Msgf("Failed to create dir %s", savePath)
 	}
 
-	var config Config
-	err = yaml.Unmarshal(data, &config)
+	filePath := filepath.Join(savePath, fmt.Sprintf("%s.%s.upack", pkg.Name, version))
+
+	err = downloadFile(ctx, downloadURL, config.Source.APIKey, filePath, config.Timeout)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &config, nil
+	return uploadFile(ctx, uploadURL, config.Destination.APIKey, filePath, config.Timeout)
 }
 
 func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig TimeoutConfig) ([]Package, error) {
@@ -204,9 +223,9 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt %d to get package list", attempt)
 		resp, err = client.Do(req)
-		resp.Body.Close()
 		if err == nil && resp.StatusCode == http.StatusOK {
 			err = json.NewDecoder(resp.Body).Decode(&packages)
+			resp.Body.Close()
 			if err != nil {
 				log.Error().Str("url", url).Msgf("Attempt %d failed to decode answer. Error: %s", attempt, err)
 				time.Sleep(3 * time.Duration(attempt) * time.Second)
@@ -226,6 +245,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 			}
 			return packages, nil
 		}
+		resp.Body.Close()
 		if resp != nil && err == nil {
 			log.Error().Str("url", url).Msgf("Failed to get package attempt %d, Status: %s", attempt, resp.Status)
 		}
@@ -307,25 +327,6 @@ func syncPackages(ctx context.Context, config *Config, sourcePackages, destPacka
 	return nil
 }
 
-func downloadAndUploadPackage(ctx context.Context, config *Config, pkg Package, version, savePath string) error {
-	downloadURL := fmt.Sprintf("%s/upack/%s/download/%s/%s/%s", config.Source.URL, config.Source.Feed, pkg.Group, pkg.Name, version)
-	uploadURL := fmt.Sprintf("%s/upack/%s/upload", config.Destination.URL, config.Destination.Feed)
-
-	err := os.MkdirAll(savePath, os.ModePerm)
-	if err != nil {
-		log.Error().Msgf("Failed to create dir %s", savePath)
-	}
-
-	filePath := filepath.Join(savePath, fmt.Sprintf("%s.%s.upack", pkg.Name, version))
-
-	err = downloadFile(ctx, downloadURL, config.Source.APIKey, filePath, config.Timeout)
-	if err != nil {
-		return err
-	}
-
-	return uploadFile(ctx, uploadURL, config.Destination.APIKey, filePath, config.Timeout)
-}
-
 func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
 	log.Info().Str("url", url).Msgf("Download package %s", filePath)
 
@@ -339,24 +340,25 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 	}
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		log.Info().Str("url", url).Msgf("Attempt download %d", attempt)
+		log.Info().Str("url", url).Msgf("Attempt download %d file %s", attempt, filePath)
 
 		resp, err := client.Do(req)
-		resp.Body.Close()
 		if err == nil && resp.StatusCode == http.StatusOK {
 			out, err := os.Create(filePath)
+
 			if err != nil {
 				log.Error().Err(err).Str("url", url).Msgf("Failed to create file")
 				time.Sleep(3 * time.Duration(attempt) * time.Second)
 				continue
 			}
-			out.Close()
 
 			fileSize, err := io.Copy(out, resp.Body)
 			if err != nil {
 				log.Error().Err(err).Str("url", url).Msgf("Failed to copy response body")
 			}
 
+			resp.Body.Close()
+			out.Close()
 			fileSizeMB := float64(fileSize) / (1024 * 1024)
 			log.Info().Str("url", url).Msgf("%s file Size: %.2f MB", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), fileSizeMB)
 			log.Info().Str("url", url).Msgf("Success download from ")
@@ -370,7 +372,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 		if err != nil {
 			log.Error().Str("url", url).Msgf("Failed download attempt %d for file %s, Error: %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), err)
 		}
-
+		resp.Body.Close()
 		time.Sleep(3 * time.Duration(attempt) * time.Second)
 	}
 
