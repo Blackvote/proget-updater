@@ -20,10 +20,11 @@ import (
 )
 
 type Config struct {
-	Source              ProgetConfig  `yaml:"source"`
-	Destination         ProgetConfig  `yaml:"destination"`
-	Timeout             TimeoutConfig `yaml:"timeout"`
-	ProceedPackageLimit int           `yaml:"proceedPackageLimit"`
+	Source              ProgetConfig    `yaml:"source"`
+	Destination         ProgetConfig    `yaml:"destination"`
+	Timeout             TimeoutConfig   `yaml:"timeout"`
+	ProceedPackageLimit int             `yaml:"proceedPackageLimit"`
+	Retention           RetentionConfig `yaml:"retention"`
 }
 
 type ProgetConfig struct {
@@ -41,6 +42,12 @@ type Package struct {
 type TimeoutConfig struct {
 	WebRequestTimeout int `yaml:"webRequestTimeout"`
 	IterationTimeout  int `yaml:"iterationTimeout"`
+}
+
+type RetentionConfig struct {
+	Enabled      bool `yaml:"enabled"`
+	DryRun       bool `yaml:"dry-run"`
+	VersionLimit int  `yaml:"versionLimit"`
 }
 
 var (
@@ -98,14 +105,13 @@ func main() {
 			return
 		case <-time.After(3 * time.Second):
 			go func() {
-				log.Info().Msg("Try to run")
 				run(ctx)
 			}()
 		}
 	}
 }
 
-func run(parentCtx context.Context) {
+func run(parentCtx context.Context) error {
 	m.Lock()
 	defer m.Unlock()
 
@@ -133,8 +139,24 @@ func run(parentCtx context.Context) {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to sync packages")
 	}
-	log.Info().Msgf("Pause %d second", config.Timeout.IterationTimeout)
+
+	destPackages, err = getPackages(ctx, config.Destination, config.Timeout)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to get packages from destination")
+	}
+
+	if config.Retention.Enabled {
+		err = retention(ctx, config, destPackages)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to retention package")
+		}
+	}
+	if err != nil {
+		return err
+	}
+	log.Info().Msgf("Pause %d second", config.Timeout.IterationTimeout+3)
 	time.Sleep(time.Duration(config.Timeout.IterationTimeout) * time.Second)
+	return nil
 }
 
 func readConfig(configFile string) (*Config, error) {
@@ -303,26 +325,6 @@ func syncPackages(ctx context.Context, config *Config, sourcePackages, destPacka
 			}
 		}
 	}
-
-	for _, pkg := range destPackages {
-		for _, version := range pkg.Versions {
-			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
-			if !sourcePackageMap[key][version] {
-				wg.Add(1)
-				go func(pkg Package, version string) {
-					defer wg.Done()
-					semaphore <- struct{}{}
-					defer func() { <-semaphore }()
-					err := deleteFile(ctx, config, pkg, version)
-					if err != nil {
-						log.Error().Err(err).Str("url", config.Destination.URL).Msgf("Failed to delete package %s:%s", pkg.Name, version)
-					}
-				}(pkg, version)
-			} else {
-				log.Info().Str("url", config.Destination.URL).Msgf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
-			}
-		}
-	}
 	wg.Wait()
 	return nil
 }
@@ -420,33 +422,48 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 	return err
 }
 
-func deleteFile(ctx context.Context, config *Config, pkg Package, version string) error {
-	deleteURL := fmt.Sprintf("%s/upack/%s/delete/%s/%s/%s", config.Destination.URL, config.Destination.Feed, pkg.Group, pkg.Name, version)
-	log.Info().Str("url", deleteURL).Msgf("Package: %s/%s mark for delete", pkg.Group, pkg.Name)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", deleteURL, nil)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("X-ApiKey", config.Destination.APIKey)
-	client := &http.Client{}
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		log.Info().Str("url", deleteURL).Msgf("Attempt %d to delete %s:%s", attempt, pkg.Group, pkg.Name)
-
-		resp, err := client.Do(req)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			defer resp.Body.Close()
-			log.Info().Str("url", deleteURL).Msgf("Success delete %s:%s", pkg.Group, pkg.Name)
-			return nil
+func retention(ctx context.Context, config *Config, packages []Package) error {
+	for _, pkg := range packages {
+		if len(pkg.Versions) <= config.Retention.VersionLimit {
+			continue
 		}
 
-		if resp != nil {
-			log.Error().Str("url", deleteURL).Msgf("Attempt %d failed to delete %s:%s. Status: %s", attempt, pkg.Group, pkg.Name, resp.Status)
-			resp.Body.Close()
+		for i, version := range pkg.Versions {
+			if i > config.Retention.VersionLimit-1 {
+				deleteURL := fmt.Sprintf("%s/upack/%s/delete/%s/%s/%s", config.Destination.URL, config.Destination.Feed, pkg.Group, pkg.Name, version)
+				log.Info().Str("url", deleteURL).Msgf("Package: %s/%s:%s mark for delete", pkg.Group, pkg.Name, version)
+				if !config.Retention.DryRun {
+					req, err := http.NewRequestWithContext(ctx, "POST", deleteURL, nil)
+					if err != nil {
+						log.Error().Str("url", deleteURL).Msgf("Failed to create reqeust for %s", deleteURL)
+						continue
+					}
+
+					req.Header.Set("X-ApiKey", config.Destination.APIKey)
+					client := &http.Client{}
+
+					for attempt := 1; attempt <= maxRetries; attempt++ {
+						log.Info().Str("url", deleteURL).Msgf("Attempt %d to delete %s/%s:%s", attempt, pkg.Group, pkg.Name, version)
+
+						resp, err := client.Do(req)
+						if err == nil && resp.StatusCode == http.StatusOK {
+							resp.Body.Close()
+							log.Info().Str("url", deleteURL).Msgf("Success delete %s/%s:%s", pkg.Group, pkg.Name, version)
+							break
+						}
+
+						if resp != nil {
+							log.Error().Str("url", deleteURL).Msgf("Attempt %d failed to delete %s/%s:%s. Status: %s", attempt, pkg.Group, pkg.Name, version, resp.Status)
+							resp.Body.Close()
+						}
+						time.Sleep(3 * time.Duration(attempt) * time.Second)
+					}
+				} else {
+					log.Info().Str("url", deleteURL).Msgf("Skip delete: %s/%s:%s (dry-run is on)", pkg.Group, pkg.Name, version)
+				}
+			}
 		}
-		time.Sleep(3 * time.Duration(attempt) * time.Second)
+
 	}
-	return err
+	return nil
 }
