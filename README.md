@@ -2,16 +2,24 @@
 Создайте файл `config.yml` в директории с утилитой. Пример конфигурации описан в файле `config.example.yml`
 ```yaml
 ## Пример заполнения файла config.yml
+SyncChain:
+   - source: # Описание Source PG/Feed, пакеты отсюда будут сравниваться с DEST PG/Feed (config.example.yml#6)
+        url: "http://localhost" # URL адрес инстанса Source PG
+        apiKey: "30a4c00a5ce95d038577fea1d67" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
+        feed: "first-feed" # Имя Source Feed
+     destination: # Описание DEST PG/Feed, пакеты отсюда будут сравниваться с Source PG/Feed (config.example.yml#1)
+        url: "http://localhost:8080" # URL адрес инстанса Dest PG
+        apiKey: "51960d3631983c7f7bcf2e20ae1" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
+        feed: "second-feed" # Имя Dest Feed
 
-source: # Описание Source PG/Feed, пакеты отсюда будут сравниваться с DEST PG/Feed (config.example.yml#6)
-  url: "http://localhost" # URL адрес инстанса Source PG
-  apiKey: "30a4c00a5ce95d038577fea1d671a567" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
-  feed: "first-feed" # Имя Source Feed
-
-destination: # Описание DEST PG/Feed, пакеты отсюда будут сравниваться с Source PG/Feed (config.example.yml#1)
-  url: "http://localhost:8080" # URL адрес инстанса Dest PG
-  apiKey: "51960d3631983c7f7bcf2e20ae1e60e" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
-  feed: "second-feed" # Имя Dest Feed
+   - source: # Тоже что и выше.
+        url: "http://localhost"
+        apiKey: "0dae18212a6f41ec8e2aaae8624614cf91d"
+        feed: "first-sec-feed"
+     destination:
+        url: "http://localhost:8080"
+        apiKey: "28e868cd710575c58881cf24ba358d9ecfb"
+        feed: "second-sec-feed"
 
 ProceedPackageLimit: 10 # Кол-во обрабатываемых параллельно пакетов
 
@@ -26,13 +34,14 @@ retention: # Конфигурация отчистки версий старше
 ```
 # Алгоритм работы
 
-1. Чтение конфигурационного файла `config.yml`, который содержит информацию о исходном и целевом серверах (URL, API ключи и фиды), а также таймауты для запросов.
+1. Чтение конфигурационного файла `config.yml`, который содержит информацию об исходном и целевом серверах (URL, API ключи и фиды), а также таймауты для запросов.
 
 2. Настройка логирования: если указан путь к файлу логов, настраивается логирование так, чтобы записи логов выводились как в файл, так и в консоль.
 
 3. Очистка указанной директории, удаляя все её содержимое, чтобы подготовить её для временного хранения загруженных пакетов.
 
 4. Запуск основного цикла работы, который продолжается до получения сигнала на завершение (например, SIGTERM).
+    - Цикличная обработка каждой цепочки
 
 5. Выполнение основной логики в каждом цикле:
 
@@ -62,3 +71,13 @@ retention: # Конфигурация отчистки версий старше
     - Отправка POST запроса на удаление пакетов, версия которых, по порядку, выше чем  `retention.versionLimit`
 
    5.6. Ожидание перед следующей итерацией на время, указанное в конфигурации (`iterationTimeout`).
+
+# Ключи запуска
+```bash
+  -c string
+        path to config file (default "config.yml")
+  -l string
+        path to logfile
+  -p string
+        path to save downloaded packages (default "./packages")
+```

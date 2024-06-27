@@ -20,11 +20,15 @@ import (
 )
 
 type Config struct {
-	Source              ProgetConfig    `yaml:"source"`
-	Destination         ProgetConfig    `yaml:"destination"`
+	SyncChain           []SyncChain     `yaml:"syncChain"`
 	Timeout             TimeoutConfig   `yaml:"timeout"`
 	ProceedPackageLimit int             `yaml:"proceedPackageLimit"`
 	Retention           RetentionConfig `yaml:"retention"`
+}
+
+type SyncChain struct {
+	Source      ProgetConfig `yaml:"source"`
+	Destination ProgetConfig `yaml:"destination"`
 }
 
 type ProgetConfig struct {
@@ -54,7 +58,6 @@ var (
 	configFile  *string = new(string)
 	savePath    *string = new(string)
 	logFilePath *string = new(string)
-	m           sync.Mutex
 )
 
 const maxRetries = 5
@@ -96,6 +99,11 @@ func main() {
 		cancel()
 	}()
 
+	config, err := readConfig(*configFile)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to read config")
+	}
+
 	run(ctx)
 
 	for {
@@ -103,7 +111,7 @@ func main() {
 		case <-ctx.Done():
 			log.Info().Msg("App stopped, ending of loop.")
 			return
-		case <-time.After(3 * time.Second):
+		case <-time.After(time.Duration(config.Timeout.IterationTimeout) * time.Second):
 			go func() {
 				run(ctx)
 			}()
@@ -112,8 +120,9 @@ func main() {
 }
 
 func run(parentCtx context.Context) error {
-	m.Lock()
-	defer m.Unlock()
+	mutex := sync.Mutex{}
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	ctx, cancel := context.WithTimeout(parentCtx, 30*time.Minute)
 	defer cancel()
@@ -125,37 +134,40 @@ func run(parentCtx context.Context) error {
 		log.Fatal().Err(err).Msg("Failed to read config")
 	}
 
-	sourcePackages, err := getPackages(ctx, config.Source, config.Timeout)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to get packages from source")
-	}
-
-	destPackages, err := getPackages(ctx, config.Destination, config.Timeout)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to get packages from destination")
-	}
-
-	err = syncPackages(ctx, config, sourcePackages, destPackages, *savePath)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to sync packages")
-	}
-
-	destPackages, err = getPackages(ctx, config.Destination, config.Timeout)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to get packages from destination")
-	}
-
-	if config.Retention.Enabled {
-		err = retention(ctx, config, destPackages)
+	for _, chain := range config.SyncChain {
+		sourcePackages, err := getPackages(ctx, chain.Source, config.Timeout)
 		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to retention package")
+			log.Fatal().Err(err).Msg("Failed to get packages from source")
+		}
+
+		destPackages, err := getPackages(ctx, chain.Destination, config.Timeout)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to get packages from destination")
+		}
+
+		err = SyncPackages(ctx, config, chain, sourcePackages, destPackages, *savePath)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to SyncChain packages")
+		}
+
+		if config.Retention.Enabled {
+			log.Info().Msgf("Start retention")
+			destPackages, err = getPackages(ctx, chain.Destination, config.Timeout)
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to get packages from destination")
+			}
+
+			err = retention(ctx, config, chain, destPackages)
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to retention package")
+			}
+		}
+		if err != nil {
+			return err
 		}
 	}
-	if err != nil {
-		return err
-	}
-	log.Info().Msgf("Pause %d second", config.Timeout.IterationTimeout+3)
-	time.Sleep(time.Duration(config.Timeout.IterationTimeout) * time.Second)
+
+	log.Info().Msgf("Pause %d second", config.Timeout.IterationTimeout)
 	return nil
 }
 
@@ -208,9 +220,9 @@ func deleteDirectoryContents(dir string) error {
 	return nil
 }
 
-func downloadAndUploadPackage(ctx context.Context, config *Config, pkg Package, version, savePath string) error {
-	downloadURL := fmt.Sprintf("%s/upack/%s/download/%s/%s/%s", config.Source.URL, config.Source.Feed, pkg.Group, pkg.Name, version)
-	uploadURL := fmt.Sprintf("%s/upack/%s/upload", config.Destination.URL, config.Destination.Feed)
+func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncChain, pkg Package, version, savePath string) error {
+	downloadURL := fmt.Sprintf("%s/upack/%s/download/%s/%s/%s", chain.Source.URL, chain.Source.Feed, pkg.Group, pkg.Name, version)
+	uploadURL := fmt.Sprintf("%s/upack/%s/upload", chain.Destination.URL, chain.Destination.Feed)
 
 	err := os.MkdirAll(savePath, os.ModePerm)
 	if err != nil {
@@ -219,12 +231,12 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, pkg Package, 
 
 	filePath := filepath.Join(savePath, fmt.Sprintf("%s.%s.upack", pkg.Name, version))
 
-	err = downloadFile(ctx, downloadURL, config.Source.APIKey, filePath, config.Timeout)
+	err = downloadFile(ctx, downloadURL, chain.Source.APIKey, filePath, config.Timeout)
 	if err != nil {
 		return err
 	}
 
-	return uploadFile(ctx, uploadURL, config.Destination.APIKey, filePath, config.Timeout)
+	return uploadFile(ctx, uploadURL, chain.Destination.APIKey, filePath, config.Timeout)
 }
 
 func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig TimeoutConfig) ([]Package, error) {
@@ -276,7 +288,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 	return nil, err
 }
 
-func syncPackages(ctx context.Context, config *Config, sourcePackages, destPackages []Package, savePath string) error {
+func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePackages, destPackages []Package, savePath string) error {
 	sourcePackageMap := make(map[string]map[string]bool)
 	for _, pkg := range sourcePackages {
 		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
@@ -293,7 +305,7 @@ func syncPackages(ctx context.Context, config *Config, sourcePackages, destPacka
 					if !config.Retention.DryRun {
 						sourcePackageMap[key][version] = false
 					} else {
-						log.Warn().Str("url", config.Destination.URL).Msgf("%s:%s exceedes version limit, will be processed (dry-run is on)", key, version)
+						log.Warn().Str("url", chain.Destination.URL).Msgf("%s:%s exceedes version limit, will be processed (dry-run is on)", key, version)
 						sourcePackageMap[key][version] = true
 					}
 				}
@@ -322,20 +334,20 @@ func syncPackages(ctx context.Context, config *Config, sourcePackages, destPacka
 			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 			if !destPackageMap[key][version] {
 				if sourcePackageMap[key][version] {
-					log.Info().Str("url", config.Destination.URL).Msgf("%s:%s:%s not found. Syncing", pkg.Group, pkg.Name, version)
+					log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s not found. Syncing", pkg.Group, pkg.Name, version)
 					wg.Add(1)
 					go func(pkg Package, version string) {
 						defer wg.Done()
 						semaphore <- struct{}{}
 						defer func() { <-semaphore }()
-						err := downloadAndUploadPackage(ctx, config, pkg, version, savePath)
+						err := downloadAndUploadPackage(ctx, config, chain, pkg, version, savePath)
 						if err != nil {
-							log.Error().Err(err).Str("url", config.Destination.URL).Msgf("Failed to sync package %s:%s", pkg.Name, version)
+							log.Error().Err(err).Str("url", chain.Destination.URL).Msgf("Failed to Sync package %s:%s", pkg.Name, version)
 						}
 					}(pkg, version)
 				}
 			} else {
-				log.Info().Str("url", config.Destination.URL).Msgf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
+				log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
 			}
 		}
 	}
@@ -377,7 +389,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			out.Close()
 			fileSizeMB := float64(fileSize) / (1024 * 1024)
 			log.Info().Str("url", url).Msgf("%s file Size: %.2f MB", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), fileSizeMB)
-			log.Info().Str("url", url).Msgf("Success download from ")
+			log.Info().Str("url", url).Msgf("Success download %s", strings.TrimPrefix(filePath, "packages\\"))
 			return nil
 		}
 
@@ -436,15 +448,16 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 	return err
 }
 
-func retention(ctx context.Context, config *Config, packages []Package) error {
+func retention(ctx context.Context, config *Config, chain SyncChain, packages []Package) error {
 	for _, pkg := range packages {
 		if len(pkg.Versions) <= config.Retention.VersionLimit {
+			log.Info().Msgf("Version limit less than version, skip retention")
 			continue
 		}
 
 		for i, version := range pkg.Versions {
 			if i > config.Retention.VersionLimit-1 {
-				deleteURL := fmt.Sprintf("%s/upack/%s/delete/%s/%s/%s", config.Destination.URL, config.Destination.Feed, pkg.Group, pkg.Name, version)
+				deleteURL := fmt.Sprintf("%s/upack/%s/delete/%s/%s/%s", chain.Destination.URL, chain.Destination.Feed, pkg.Group, pkg.Name, version)
 				log.Info().Str("url", deleteURL).Msgf("Package: %s/%s:%s mark for delete", pkg.Group, pkg.Name, version)
 				if !config.Retention.DryRun {
 					req, err := http.NewRequestWithContext(ctx, "POST", deleteURL, nil)
@@ -453,7 +466,7 @@ func retention(ctx context.Context, config *Config, packages []Package) error {
 						continue
 					}
 
-					req.Header.Set("X-ApiKey", config.Destination.APIKey)
+					req.Header.Set("X-ApiKey", chain.Destination.APIKey)
 					client := &http.Client{}
 
 					for attempt := 1; attempt <= maxRetries; attempt++ {
