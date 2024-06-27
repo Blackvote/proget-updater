@@ -2,7 +2,7 @@
 Создайте файл `config.yml` в директории с утилитой. Пример конфигурации описан в файле `config.example.yml`
 ```yaml
 ## Пример заполнения файла config.yml
-SyncChain:
+syncChain:
    - source: # Описание Source PG/Feed, пакеты отсюда будут сравниваться с DEST PG/Feed (config.example.yml#6)
         url: "http://localhost" # URL адрес инстанса Source PG
         apiKey: "30a4c00a5ce95d038577fea1d67" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )

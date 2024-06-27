@@ -46,6 +46,7 @@ type Package struct {
 type TimeoutConfig struct {
 	WebRequestTimeout int `yaml:"webRequestTimeout"`
 	IterationTimeout  int `yaml:"iterationTimeout"`
+	SyncTimeout       int `yaml:"syncTimeout"`
 }
 
 type RetentionConfig struct {
@@ -87,34 +88,35 @@ func main() {
 		log.Info().Msg("Directory contents deleted successfully")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	go func() {
-		<-stop
-		log.Fatal().Msg("Get SIGTERM.")
-		cancel()
-	}()
-
-	config, err := readConfig(*configFile)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to read config")
-	}
-
-	run(ctx)
-
 	for {
+		config, err := readConfig(*configFile)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to read config")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout.SyncTimeout)*time.Second)
+
+		go func() {
+			<-stop
+			log.Fatal().Msg("Received stop signal.")
+			cancel()
+		}()
+
+		err = run(ctx)
+		if err != nil {
+			log.Error().Err(err).Msg("Error syncing")
+		}
+
+		cancel()
+
 		select {
-		case <-ctx.Done():
-			log.Info().Msg("App stopped, ending of loop.")
+		case <-stop:
+			log.Info().Msg("Received stop signal, close loop.")
 			return
-		case <-time.After(time.Duration(config.Timeout.IterationTimeout) * time.Second):
-			go func() {
-				run(ctx)
-			}()
+		case <-time.After((time.Duration(config.Timeout.IterationTimeout) / 2) * time.Second):
+			log.Info().Msgf("Starting new iteration after pause. %d seconds", config.Timeout.IterationTimeout)
 		}
 	}
 }
@@ -124,9 +126,6 @@ func run(parentCtx context.Context) error {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	ctx, cancel := context.WithTimeout(parentCtx, 30*time.Minute)
-	defer cancel()
-
 	log.Info().Time("timestamp", time.Now()).Msg("Application start")
 
 	config, err := readConfig(*configFile)
@@ -135,40 +134,48 @@ func run(parentCtx context.Context) error {
 	}
 
 	for _, chain := range config.SyncChain {
-		sourcePackages, err := getPackages(ctx, chain.Source, config.Timeout)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to get packages from source")
-		}
+		select {
+		case <-parentCtx.Done():
+			log.Warn().Msgf("Timeout or cancel signal received, exiting run. Timeout: %d seconds", config.Timeout.SyncTimeout)
+			return parentCtx.Err()
+		default:
+			sourcePackages, err := getPackages(parentCtx, chain.Source, config.Timeout)
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to get packages from source")
+			}
 
-		destPackages, err := getPackages(ctx, chain.Destination, config.Timeout)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to get packages from destination")
-		}
-
-		err = SyncPackages(ctx, config, chain, sourcePackages, destPackages, *savePath)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to SyncChain packages")
-		}
-
-		if config.Retention.Enabled {
-			log.Info().Msgf("Start retention")
-			destPackages, err = getPackages(ctx, chain.Destination, config.Timeout)
+			destPackages, err := getPackages(parentCtx, chain.Destination, config.Timeout)
 			if err != nil {
 				log.Fatal().Err(err).Msg("Failed to get packages from destination")
 			}
 
-			err = retention(ctx, config, chain, destPackages)
+			err = SyncPackages(parentCtx, config, chain, sourcePackages, destPackages, *savePath)
 			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to retention package")
+				log.Fatal().Err(err).Msg("Failed to SyncChain packages")
+			}
+
+			if config.Retention.Enabled {
+				log.Info().Msgf("Start retention")
+				destPackages, err = getPackages(parentCtx, chain.Destination, config.Timeout)
+				if err != nil {
+					log.Fatal().Err(err).Msg("Failed to get packages from destination")
+				}
+
+				err = retention(parentCtx, config, chain, destPackages)
+				if err != nil {
+					log.Fatal().Err(err).Msg("Failed to retention package")
+				}
 			}
 		}
-		if err != nil {
-			return err
-		}
 	}
-
-	log.Info().Msgf("Pause %d second", config.Timeout.IterationTimeout)
-	return nil
+	log.Info().Msgf("Pause %d seconds", config.Timeout.IterationTimeout)
+	select {
+	case <-parentCtx.Done():
+		log.Warn().Msgf("Timeout or cancel signal received, exiting run. Timeout: %d seconds", config.Timeout.SyncTimeout)
+		return parentCtx.Err()
+	case <-time.After((time.Duration(config.Timeout.IterationTimeout) / 2) * time.Second):
+		return nil
+	}
 }
 
 func readConfig(configFile string) (*Config, error) {
