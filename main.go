@@ -141,29 +141,34 @@ func run(parentCtx context.Context) error {
 		default:
 			sourcePackages, err := getPackages(parentCtx, chain.Source, config.Timeout)
 			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to get packages from source")
+				log.Error().Err(err).Msg("Failed to get packages from source")
+				continue
 			}
 
 			destPackages, err := getPackages(parentCtx, chain.Destination, config.Timeout)
 			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to get packages from destination")
+				log.Error().Err(err).Msg("Failed to get packages from destination")
+				continue
 			}
 
 			err = SyncPackages(parentCtx, config, chain, sourcePackages, destPackages, *savePath)
 			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to SyncChain packages")
+				log.Error().Err(err).Msg("Failed to SyncChain packages")
+				continue
 			}
 
 			if config.Retention.Enabled {
 				log.Info().Msgf("Start retention")
 				destPackages, err = getPackages(parentCtx, chain.Destination, config.Timeout)
 				if err != nil {
-					log.Fatal().Err(err).Msg("Failed to get packages from destination")
+					log.Error().Err(err).Msg("Failed to get packages from destination")
+					continue
 				}
 
 				err = retention(parentCtx, config, chain, destPackages)
 				if err != nil {
-					log.Fatal().Err(err).Msg("Failed to retention package")
+					log.Error().Err(err).Msg("Retention failed")
+					continue
 				}
 			}
 		}
@@ -281,18 +286,18 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 			}
 			log.Info().Str("url", url).Msg(packageList.String())
 
-			if err != nil {
-				log.Error().Str("url", url).Msgf("Failed to get package attempt %d, Error: %s", attempt, err)
-			}
 			return packages, nil
-		}
-		resp.Body.Close()
-		if resp != nil && err == nil {
-			log.Error().Str("url", url).Msgf("Failed to get package attempt %d, Status: %s", attempt, resp.Status)
 		}
 		time.Sleep(3 * time.Duration(attempt) * time.Second)
 	}
-	return nil, err
+	if err != nil {
+		log.Error().Str("url", url).Msgf("Failed to get package, Error: %s", err)
+	}
+	if resp != nil && err == nil {
+		resp.Body.Close()
+		log.Error().Str("url", url).Msgf("Failed to get package, Status: %s", resp.Status)
+	}
+	return nil, fmt.Errorf("failed to get package after %d attempts", maxRetries)
 }
 
 func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePackages, destPackages []Package, savePath string) error {
@@ -374,10 +379,11 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
+	var resp *http.Response
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt download %d file %s", attempt, filePath)
 
-		resp, err := client.Do(req)
+		resp, err = client.Do(req)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			out, err := os.Create(filePath)
 
@@ -390,9 +396,9 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			fileSize, err := io.Copy(out, resp.Body)
 			if err != nil {
 				log.Error().Err(err).Str("url", url).Msgf("Failed to copy response body")
+				continue
 			}
 
-			resp.Body.Close()
 			out.Close()
 			fileSizeMB := float64(fileSize) / (1024 * 1024)
 			log.Info().Str("url", url).Msgf("%s file Size: %.2f MB", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), fileSizeMB)
@@ -400,18 +406,17 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			return nil
 		}
 
-		if resp != nil {
-			log.Error().Str("url", url).Msgf("Failed download attempt %d, Status: %s", attempt, resp.Status)
-		}
-
-		if err != nil {
-			log.Error().Str("url", url).Msgf("Failed download attempt %d for file %s, Error: %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), err)
-		}
-		resp.Body.Close()
 		time.Sleep(3 * time.Duration(attempt) * time.Second)
 	}
+	if resp != nil {
+		resp.Body.Close()
+		log.Error().Str("url", url).Msgf("Failed download, Status: %s", resp.Status)
+	}
 
-	return fmt.Errorf("failed to retrieve %s after %d attempts", url, maxRetries)
+	if err != nil {
+		log.Error().Str("url", url).Msgf("Failed download for file %s, Error: %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), err)
+	}
+	return fmt.Errorf("failed to download %s after %d attempts", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), maxRetries)
 }
 
 func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
@@ -431,37 +436,38 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
+	var resp *http.Response
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt %d upload for file %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 
 		resp, err := client.Do(req)
-		resp.Body.Close()
 		if err == nil && resp.StatusCode == http.StatusCreated {
 			log.Info().Str("url", url).Msgf("Success upload: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 			err = os.Remove(filePath)
 			return nil
 		}
 
-		if resp != nil {
-			log.Error().Str("url", url).Msgf("Failed upload attempt %d for file %s, Status: %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), resp.Status)
-		}
-
-		if err != nil {
-			log.Error().Str("url", url).Msgf("Failed upload attempt %d for file %s, Error: %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), err)
-		}
-
 		time.Sleep(3 * time.Duration(attempt) * time.Second)
 	}
-	return err
+	if resp != nil {
+		resp.Body.Close()
+		log.Error().Str("url", url).Msgf("Failed upload  file %s, Status: %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), resp.Status)
+	}
+
+	if err != nil {
+		log.Error().Str("url", url).Msgf("Failed upload file %s, Error: %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), err)
+	}
+	return fmt.Errorf("failed to upload %s after %d attempts", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), maxRetries)
 }
 
 func retention(ctx context.Context, config *Config, chain SyncChain, packages []Package) error {
 	for _, pkg := range packages {
 		if len(pkg.Versions) <= config.Retention.VersionLimit {
-			log.Info().Msgf("Version limit less than version, skip retention")
+			log.Info().Str("url", chain.Destination.URL).Msgf("Version limit less than version, skip retention")
 			continue
 		}
 
+		var resp *http.Response
 		for i, version := range pkg.Versions {
 			if i > config.Retention.VersionLimit-1 {
 				deleteURL := fmt.Sprintf("%s/upack/%s/delete/%s/%s/%s", chain.Destination.URL, chain.Destination.Feed, pkg.Group, pkg.Name, version)
@@ -486,18 +492,22 @@ func retention(ctx context.Context, config *Config, chain SyncChain, packages []
 							break
 						}
 
-						if resp != nil {
-							log.Error().Str("url", deleteURL).Msgf("Attempt %d failed to delete %s/%s:%s. Status: %s", attempt, pkg.Group, pkg.Name, version, resp.Status)
-							resp.Body.Close()
-						}
 						time.Sleep(3 * time.Duration(attempt) * time.Second)
+					}
+					if resp != nil {
+						log.Error().Str("url", deleteURL).Msgf("Failed to delete %s/%s:%s. Status: %s", pkg.Group, pkg.Name, version, resp.Status)
+						resp.Body.Close()
+					}
+
+					if err != nil {
+						log.Error().Str("url", deleteURL).Msgf("Failed to delete %s/%s:%s. Error: %s", pkg.Group, pkg.Name, version, resp.Status)
 					}
 				} else {
 					log.Info().Str("url", deleteURL).Msgf("Skip delete: %s/%s:%s (dry-run is on)", pkg.Group, pkg.Name, version)
 				}
 			}
 		}
-
 	}
-	return nil
+	err := fmt.Errorf("retention failed")
+	return err
 }
