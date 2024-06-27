@@ -277,6 +277,30 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 }
 
 func syncPackages(ctx context.Context, config *Config, sourcePackages, destPackages []Package, savePath string) error {
+	sourcePackageMap := make(map[string]map[string]bool)
+	for _, pkg := range sourcePackages {
+		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
+		if sourcePackageMap[key] == nil {
+			sourcePackageMap[key] = make(map[string]bool)
+		}
+		for i, version := range pkg.Versions {
+			if !config.Retention.Enabled {
+				sourcePackageMap[key][version] = true
+			} else {
+				if i <= config.Retention.VersionLimit-1 {
+					sourcePackageMap[key][version] = true
+				} else {
+					if !config.Retention.DryRun {
+						sourcePackageMap[key][version] = false
+					} else {
+						log.Warn().Str("url", config.Destination.URL).Msgf("%s:%s exceedes version limit, will be processed (dry-run is on)", key, version)
+						sourcePackageMap[key][version] = true
+					}
+				}
+			}
+		}
+	}
+
 	destPackageMap := make(map[string]map[string]bool)
 	for _, pkg := range destPackages {
 		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
@@ -287,18 +311,6 @@ func syncPackages(ctx context.Context, config *Config, sourcePackages, destPacka
 			destPackageMap[key][version] = true
 		}
 	}
-	sourcePackageMap := make(map[string]map[string]bool)
-	for _, pkg := range sourcePackages {
-		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
-		if sourcePackageMap[key] == nil {
-			sourcePackageMap[key] = make(map[string]bool)
-		}
-		for _, version := range pkg.Versions {
-			sourcePackageMap[key][version] = true
-		}
-	}
-
-	fmt.Println(len(sourcePackageMap))
 
 	if len(sourcePackageMap) < config.ProceedPackageLimit {
 		config.ProceedPackageLimit = len(sourcePackageMap)
@@ -309,17 +321,19 @@ func syncPackages(ctx context.Context, config *Config, sourcePackages, destPacka
 		for _, version := range pkg.Versions {
 			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 			if !destPackageMap[key][version] {
-				log.Info().Str("url", config.Destination.URL).Msgf("%s:%s:%s not found. Syncing", pkg.Group, pkg.Name, version)
-				wg.Add(1)
-				go func(pkg Package, version string) {
-					defer wg.Done()
-					semaphore <- struct{}{}
-					defer func() { <-semaphore }()
-					err := downloadAndUploadPackage(ctx, config, pkg, version, savePath)
-					if err != nil {
-						log.Error().Err(err).Str("url", config.Destination.URL).Msgf("Failed to sync package %s:%s", pkg.Name, version)
-					}
-				}(pkg, version)
+				if sourcePackageMap[key][version] {
+					log.Info().Str("url", config.Destination.URL).Msgf("%s:%s:%s not found. Syncing", pkg.Group, pkg.Name, version)
+					wg.Add(1)
+					go func(pkg Package, version string) {
+						defer wg.Done()
+						semaphore <- struct{}{}
+						defer func() { <-semaphore }()
+						err := downloadAndUploadPackage(ctx, config, pkg, version, savePath)
+						if err != nil {
+							log.Error().Err(err).Str("url", config.Destination.URL).Msgf("Failed to sync package %s:%s", pkg.Name, version)
+						}
+					}(pkg, version)
+				}
 			} else {
 				log.Info().Str("url", config.Destination.URL).Msgf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
 			}
