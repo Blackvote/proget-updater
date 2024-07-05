@@ -5,12 +5,14 @@
 syncChain:
    - source: # Описание Source PG/Feed, пакеты отсюда будут сравниваться с DEST PG/Feed (config.example.yml#6)
         url: "http://localhost" # URL адрес инстанса Source PG
-        apiKey: "30a4c00a5ce95d038577fea1d67" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
+        apiKey: "30a4c00a5ce95d038577fea1d671a" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
         feed: "first-feed" # Имя Source Feed
      destination: # Описание DEST PG/Feed, пакеты отсюда будут сравниваться с Source PG/Feed (config.example.yml#1)
         url: "http://localhost:8080" # URL адрес инстанса Dest PG
-        apiKey: "51960d3631983c7f7bcf2e20ae1" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
+        apiKey: "51960d3631983c7f7bcf2e20ae1e" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
         feed: "second-feed" # Имя Dest Feed
+     type: "upack" # тип синхронизируемого фида. Доступные "nuget", "upack", "assets"
+# P.S - Для Proget API asset тоже Feed. Для настройки нужно указать имя директории, она будет синхронизирована рекурсивно
 
    - source: # Тоже что и выше.
         url: "http://localhost"
@@ -20,6 +22,7 @@ syncChain:
         url: "http://localhost:8080"
         apiKey: "28e868cd710575c58881cf24ba358d9ecfb"
         feed: "second-sec-feed"
+     type: "nuget"
 
 ProceedPackageLimit: 10 # Кол-во обрабатываемых параллельно пакетов
 
@@ -60,10 +63,10 @@ retention: # Конфигурация отчистки версий старше
    5.4. Синхронизация пакетов:
     - Для каждого пакета, который нужно синхронизировать:
         - Скачивание пакета с исходного сервера:
-            - Отправка GET запроса на исходный сервер для скачивания конкретного пакета по адресу `source.url/upack/source.feed/download/group/name/version`.
+            - Отправка GET запроса на исходный сервер для скачивания конкретного пакета по адресу `source.url/syncChain.Type/source.feed/download/group/name/version`.
             - Загрузка пакета в указанную директорию на локальной машине.
         - Загрузка пакета на целевой сервер:
-            - Отправка POST запроса на целевой сервер для загрузки пакета по адресу `destination.url/upack/destination.feed/upload`.
+            - Отправка POST запроса на целевой сервер для загрузки пакета по адресу `destination.url/syncChain.Type/destination.feed/upload`.
             - Удаление пакета из локальной директории после успешной загрузки.
 
    5.5. Удаление пакетов с целевого сервера:

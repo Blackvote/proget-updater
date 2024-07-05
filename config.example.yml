@@ -9,6 +9,7 @@ SyncChain:
       url: "http://localhost:8080" # URL адрес инстанса Dest PG
       apiKey: "51960d3631983c7f7bcf2e20ae1e60e" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
       feed: "second-feed" # Имя Dest Feed
+    type: "upack" # тип синхронизируемого фида. Доступные "nuget", "upack", "assets".
 
   - source: # Тоже что и выше.
       url: "http://localhost:8081"
@@ -18,6 +19,9 @@ SyncChain:
       url: "http://localhost:8083"
       apiKey: "28e868cd710575c58881cf24ba358d9ecfb93af7"
       feed: "third-sec-feed"
+    type: "nuget"
+
+
 
 # тут можно добавить ещё несколько цепочек синхронизации
 #  - source:
@@ -28,9 +32,10 @@ SyncChain:
 #      url: ""
 #      apiKey: ""
 #      feed: ""
+#    type: "nuget"
 
 # Ниже конфиг один на все цепочки
-ProceedPackageLimit: 10 # Кол-во обрабатываемых параллельно пакетов
+ProceedPackageLimit: 10 # Кол-во обрабатываемых параллельно пакетов. Снижение этого параметра снижает общую нагрузку на ресурсы хоста
 
 timeout: # Конфигурация таймаутов
   webRequestTimeout: 15 # Таймаут обращений к апи

@@ -19,18 +19,25 @@ type Config struct {
 type SyncChain struct {
 	Source      ProgetConfig `yaml:"source"`
 	Destination ProgetConfig `yaml:"destination"`
+	Type        string       `yaml:"type"`
 }
 
 type ProgetConfig struct {
 	URL    string `yaml:"url"`
 	APIKey string `yaml:"apiKey"`
 	Feed   string `yaml:"feed"`
+	Type   string `yaml:"type"`
 }
 
 type Package struct {
 	Group    string   `yaml:"group"`
 	Name     string   `yaml:"name"`
 	Versions []string `yaml:"versions"`
+}
+
+type Asset struct {
+	Name string `yaml:"name"`
+	Type string `yaml:"type"`
 }
 
 type TimeoutConfig struct {
@@ -55,6 +62,11 @@ func readConfig(configFile string) (*Config, error) {
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		return nil, err
+	}
+
+	for i := range config.SyncChain {
+		config.SyncChain[i].Source.Type = config.SyncChain[i].Type
+		config.SyncChain[i].Destination.Type = config.SyncChain[i].Type
 	}
 
 	return &config, nil
