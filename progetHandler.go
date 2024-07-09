@@ -77,7 +77,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 				err = json.NewDecoder(strings.NewReader(bodyStr)).Decode(&assets)
 				for _, asset := range assets {
 					if asset.Type == "dir" {
-						subAssets, err := fetchAssets(url+"/"+asset.Name, asset.Name)
+						subAssets, err := fetchAssets(url+"/"+asset.Name, asset.Name, progetConfig.APIKey)
 						if err != nil {
 							return nil, err
 						}
@@ -371,6 +371,7 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 	return fmt.Errorf("failed to upload %s after %d attempts", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), maxRetries)
 }
 
+// gpt-4o
 func decodeXML(bodyStr string) ([]Package, error) {
 	var packages []Package
 	decoder := xml.NewDecoder(strings.NewReader(bodyStr))
@@ -397,7 +398,6 @@ func decodeXML(bodyStr string) ([]Package, error) {
 						name := parts[0]
 						version := strings.TrimSuffix(parts[1], "')")
 
-						// Обновляем существующий пакет или добавляем новый
 						found := false
 						for i, pkg := range packages {
 							if pkg.Name == name {
@@ -422,7 +422,7 @@ func decodeXML(bodyStr string) ([]Package, error) {
 	return packages, nil
 }
 
-func fetchAssets(url string, parentPath string) ([]Asset, error) {
+func fetchAssets(url string, parentPath, apiKey string) ([]Asset, error) {
 	var allAssets []Asset
 
 	client := &http.Client{}
@@ -431,8 +431,8 @@ func fetchAssets(url string, parentPath string) ([]Asset, error) {
 		return nil, err
 	}
 
+	req.Header.Add("X-ApiKey", apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer f12ac9062f385a9fa4b77bb110237db6f8e7e863")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -458,7 +458,7 @@ func fetchAssets(url string, parentPath string) ([]Asset, error) {
 	for _, asset := range assets {
 		fullName := parentPath + "/" + asset.Name
 		if asset.Type == "dir" {
-			subAssets, err := fetchAssets(url+"/"+asset.Name, fullName)
+			subAssets, err := fetchAssets(url+"/"+asset.Name, fullName, apiKey)
 			if err != nil {
 				return nil, err
 			}
