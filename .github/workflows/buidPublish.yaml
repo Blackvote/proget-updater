@@ -1,0 +1,74 @@
+name: Build and Publish Updater_go
+
+on:
+  push:
+    tags:
+      - 'go-*'
+
+jobs:
+  build:
+    runs-on:
+      - self-hosted
+      - kube-common
+    strategy:
+      matrix:
+        goos: [windows, linux]
+        goarch: [amd64]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: '1.22.x'
+
+    - name: Install dependencies
+      run: go get .
+
+    - name: Build
+      run: |
+        mkdir -p build
+        GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/updater_${{ github.ref_name }}_${{ matrix.goos }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: updater_${{ github.ref_name }}_${{ matrix.goos }}
+        path: build/updater_${{ github.ref_name }}_${{ matrix.goos }}${{ matrix.goos == 'windows' && '.exe' || '' }}
+
+  release:
+    runs-on:
+      - self-hosted
+      - kube-common
+    needs: build
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Download Linux Artifact
+      uses: actions/download-artifact@v2
+      with:
+        name: updater_${{ github.ref_name }}_linux
+        path: .
+
+    - name: Download Windows Artifact
+      uses: actions/download-artifact@v2
+      with:
+        name: updater_${{ github.ref_name }}_windows
+        path: .
+
+    - name: Create GitHub Release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: |
+          updater_${{ github.ref_name }}_linux
+          updater_${{ github.ref_name }}_windows.exe
+        token: ${{ secrets.GITHUB_TOKEN }}
+        name: "Release ${{ github.ref_name }}"
+        tag: ${{ github.ref_name }}
+        body: |
+          Release of updater version ${{ github.ref_name }}.
+          Dont forget to create "config.yml" (https://github.com/deeplay-io/tools-neo-proget-updater/blob/goUpdater/config.example.yml).
+        draft: false
+        prerelease: false
