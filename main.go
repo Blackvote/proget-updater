@@ -42,7 +42,7 @@ func main() {
 	}
 
 	log.Info().Msgf("Clean %s", *savePath)
-	err := deleteDirectoryContents(*savePath)
+	err := createDeleteDirectoryContents(*savePath)
 	if err != nil {
 		log.Error().Err(err).Msg("Error deleting directory contents")
 	} else {

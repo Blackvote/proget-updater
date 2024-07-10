@@ -47,9 +47,9 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 		log.Info().Str("url", url).Msgf("Attempt %d to get package list", attempt)
 		resp, bodyStr, err := apiCall(client, req)
 
-		if err != nil {
+		if err != nil || resp.StatusCode != http.StatusOK {
 			if bodyStr != "" {
-				log.Error().Err(err).Str("url", url).Msgf("Attempt %d failed to get package. Body: %s", attempt, bodyStr)
+				log.Error().Err(err).Str("url", url).Msgf("Attempt %d failed to get package. Status: %s", attempt, resp.Status)
 			} else {
 				log.Error().Err(err).Str("url", url).Msgf("Attempt %d failed to get package.", attempt)
 			}
@@ -162,12 +162,12 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 			if !destPackageMap[key][version] {
 				if sourcePackageMap[key][version] {
-					log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s not found. Syncing", pkg.Group, pkg.Name, version)
 					wg.Add(1)
 					go func(pkg Package, version string) {
 						defer wg.Done()
 						semaphore <- struct{}{}
 						defer func() { <-semaphore }()
+						log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s not found. Syncing", pkg.Group, pkg.Name, version)
 						err := downloadAndUploadPackage(ctx, config, chain, pkg, version, savePath)
 						if err != nil {
 							log.Error().Err(err).Str("url", chain.Destination.URL).Msgf("Failed to Sync package %s:%s", pkg.Name, version)
@@ -238,7 +238,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 
 		if err != nil {
 			if bodyStr != "" {
-				log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to download %s. Body: %s", attempt, filePath, bodyStr)
+				log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to download %s. Status: %s", attempt, filePath, resp.Status)
 			} else {
 				log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to download %s", attempt, filePath)
 			}
@@ -336,7 +336,7 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 		resp, bodyStr, err := apiCall(client, req)
 		if err != nil {
 			if bodyStr != "" {
-				log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to upload %s. Body: %s", attempt, filePath, bodyStr)
+				log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to upload %s. Status: %s", attempt, filePath, resp.Status)
 			} else {
 				log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to upload %s", attempt, filePath)
 			}

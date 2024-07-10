@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Config struct {
@@ -65,6 +66,9 @@ func readConfig(configFile string) (*Config, error) {
 	}
 
 	for i := range config.SyncChain {
+		config.SyncChain[i].Source.URL = strings.TrimSuffix(config.SyncChain[i].Source.URL, "/")
+		config.SyncChain[i].Destination.URL = strings.TrimSuffix(config.SyncChain[i].Destination.URL, "/")
+
 		config.SyncChain[i].Source.Type = config.SyncChain[i].Type
 		config.SyncChain[i].Destination.Type = config.SyncChain[i].Type
 	}
@@ -85,7 +89,19 @@ func setupLogging(logFilePath string) (*os.File, error) {
 	return logFile, nil
 }
 
-func deleteDirectoryContents(dir string) error {
+func createDeleteDirectoryContents(dir string) error {
+
+	_, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		err := os.Mkdir(dir, 0755)
+		if err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else {
+	}
+
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return err
