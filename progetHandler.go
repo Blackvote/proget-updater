@@ -167,6 +167,13 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 						defer wg.Done()
 						semaphore <- struct{}{}
 						defer func() { <-semaphore }()
+
+						select {
+						case <-ctx.Done():
+							log.Warn().Str("url", chain.Destination.URL).Msgf("%s:%s:%s Sync cancelled(timeout)", pkg.Group, pkg.Name, version)
+							return
+						default:
+						}
 						log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s not found. Syncing", pkg.Group, pkg.Name, version)
 						err := downloadAndUploadPackage(ctx, config, chain, pkg, version, savePath)
 						if err != nil {

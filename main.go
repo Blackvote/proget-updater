@@ -87,7 +87,7 @@ func run(parentCtx context.Context) error {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	log.Info().Time("timestamp", time.Now()).Msg("Application start")
+	log.Info().Msg("Application start")
 
 	config, err := readConfig(*configFile)
 	if err != nil {
