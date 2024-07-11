@@ -19,9 +19,11 @@ import (
 )
 
 func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig TimeoutConfig) ([]Package, error) {
+	if *debug {
+		log.Info().Str("url", progetConfig.URL).Msgf("Get package")
+	}
 	var (
 		url      string
-		resp     *http.Response
 		packages []Package
 		assets,
 		allAssets []Asset
@@ -112,7 +114,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 					}
 				}
 			}
-			return packages, nil
+
 		}
 
 		log.Info().Str("url", url).Msgf("Package count in %s/%s: %d", progetConfig.URL, progetConfig.Feed, len(packages))
@@ -123,17 +125,16 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 		}
 
 		log.Info().Str("url", url).Msg(packageList.String())
-	}
-	if err != nil {
-		log.Error().Err(err).Str("url", url).Msgf("Failed to get package")
-	}
-	if resp != nil && err == nil {
-		log.Error().Str("url", url).Msgf("Failed to get package, Status: %s.", resp.Status)
+		return packages, nil
 	}
 	return nil, fmt.Errorf("failed to get package after %d attempts", maxRetries)
 }
 
 func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePackages, destPackages []Package, savePath string) error {
+	if *debug {
+		log.Info().Str("url", chain.Destination.URL).Msgf("Sync package")
+	}
+	
 	sourcePackageMap := make(map[string]map[string]bool)
 	for _, pkg := range sourcePackages {
 		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
