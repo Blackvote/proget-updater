@@ -60,21 +60,35 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 		if err == nil && resp.StatusCode == http.StatusOK {
 			switch progetConfig.Type {
 			case "upack":
+				if *debug {
+					log.Info().Str("url", url).Msgf("Decoding json %s", bodyStr)
+				}
 				err = json.NewDecoder(strings.NewReader(bodyStr)).Decode(&packages)
 				if err != nil {
-					log.Error().Err(err).Str("url", url).Msgf("error reading response")
+					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
 					time.Sleep(3 * time.Duration(attempt) * time.Second)
 					continue
 				}
 			case "nuget":
+				if *debug {
+					log.Info().Str("url", url).Msgf("Decoding xml %s", bodyStr)
+				}
 				packages, err = decodeXML(bodyStr)
 				if err != nil {
-					log.Error().Err(err).Str("url", url).Msgf("error reading response")
+					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
 					time.Sleep(3 * time.Duration(attempt) * time.Second)
 					continue
 				}
 			case "asset":
+				if *debug {
+					log.Info().Str("url", url).Msgf("Decoding json %s", bodyStr)
+				}
 				err = json.NewDecoder(strings.NewReader(bodyStr)).Decode(&assets)
+				if err != nil {
+					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
+					time.Sleep(3 * time.Duration(attempt) * time.Second)
+					continue
+				}
 				for _, asset := range assets {
 					if asset.Type == "dir" {
 						subAssets, err := fetchAssets(url+"/"+asset.Name, asset.Name, progetConfig.APIKey)
