@@ -481,6 +481,9 @@ func fetchAssets(url string, parentPath, apiKey string) ([]Asset, error) {
 
 func apiCall(client *http.Client, req *http.Request) (*http.Response, string, error) {
 	resp, err := client.Do(req)
+	if *debug {
+		log.Info().Str("url", req.URL.String()).Msgf("get resp %d", resp.StatusCode)
+	}
 	if err != nil {
 		return nil, "", err
 	}

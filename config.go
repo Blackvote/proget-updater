@@ -54,6 +54,11 @@ type RetentionConfig struct {
 }
 
 func readConfig(configFile string) (*Config, error) {
+
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		return nil, err
+	}
+
 	data, err := ioutil.ReadFile(configFile)
 	if err != nil {
 		return nil, err
