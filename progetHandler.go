@@ -134,8 +134,11 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 	if *debug {
 		log.Info().Str("url", chain.Destination.URL).Msgf("Sync package")
 	}
-	
+
 	sourcePackageMap := make(map[string]map[string]bool)
+	if *debug {
+		log.Info().Str("url", chain.Destination.URL).Msgf("Create source package map")
+	}
 	for _, pkg := range sourcePackages {
 		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 		if sourcePackageMap[key] == nil {
@@ -160,6 +163,9 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 	}
 
 	destPackageMap := make(map[string]map[string]bool)
+	if *debug {
+		log.Info().Str("url", chain.Destination.URL).Msgf("Create dest package map")
+	}
 	for _, pkg := range destPackages {
 		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 		if destPackageMap[key] == nil {
@@ -175,6 +181,9 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 	}
 	semaphore := make(chan struct{}, config.ProceedPackageLimit)
 	var wg sync.WaitGroup
+	if *debug {
+		log.Info().Str("url", chain.Destination.URL).Msgf("Start goroutine loop")
+	}
 	for _, pkg := range sourcePackages {
 		for _, version := range pkg.Versions {
 			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
@@ -209,11 +218,17 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 }
 
 func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncChain, pkg Package, version, savePath string) error {
+	if *debug {
+		log.Info().Str("url", chain.Destination.URL).Msgf("DownloadAndUpload package")
+	}
 	var (
 		downloadURL,
 		uploadURL,
 		filePath string
 	)
+	if *debug {
+		log.Info().Str("url", chain.Source.URL).Msgf("Switch to choose urls. case: %s", chain.Destination.Type)
+	}
 	switch chain.Type {
 	case "upack":
 		downloadURL = fmt.Sprintf("%s/%s/%s/download/%s/%s/%s", chain.Source.URL, chain.Type, chain.Source.Feed, pkg.Group, pkg.Name, version)
