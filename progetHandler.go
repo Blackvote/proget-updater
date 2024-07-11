@@ -182,17 +182,32 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 	semaphore := make(chan struct{}, config.ProceedPackageLimit)
 	var wg sync.WaitGroup
 	if *debug {
-		log.Info().Str("url", chain.Destination.URL).Msgf("Start goroutine loop")
+		log.Info().Msgf("Start goroutine loop")
 	}
 	for _, pkg := range sourcePackages {
+		if *debug {
+			log.Info().Msgf("Sync package 1st for")
+		}
 		for _, version := range pkg.Versions {
+			if *debug {
+				log.Info().Msgf("Sync package 2nd for")
+			}
 			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 			if !destPackageMap[key][version] {
 				if sourcePackageMap[key][version] {
+					if *debug {
+						log.Info().Msgf("Add waitGroup")
+					}
 					wg.Add(1)
+					if *debug {
+						log.Info().Msgf("Start goroutine")
+					}
 					go func(pkg Package, version string) {
 						defer wg.Done()
 						semaphore <- struct{}{}
+						if *debug {
+							log.Info().Msgf("add semaphore")
+						}
 						defer func() { <-semaphore }()
 
 						select {
