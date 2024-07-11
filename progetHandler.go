@@ -57,6 +57,9 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 			continue
 		}
 
+		if *debug {
+			log.Info().Str("url", url).Msgf("Switch to choose package decode way. case: %s", progetConfig.Type)
+		}
 		if err == nil && resp.StatusCode == http.StatusOK {
 			switch progetConfig.Type {
 			case "upack":
