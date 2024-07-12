@@ -179,7 +179,7 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 	if len(sourcePackageMap) < config.ProceedPackageLimit {
 		config.ProceedPackageLimit = len(sourcePackageMap)
 	}
-	semaphore := make(chan struct{}, config.ProceedPackageLimit)
+	//semaphore := make(chan struct{}, config.ProceedPackageLimit)
 	var wg sync.WaitGroup
 	if *debug {
 		log.Info().Msgf("Start goroutine loop")
@@ -203,12 +203,15 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 						log.Info().Msgf("Start goroutine")
 					}
 					go func(pkg Package, version string) {
-						defer wg.Done()
-						semaphore <- struct{}{}
 						if *debug {
-							log.Info().Msgf("add semaphore")
+							log.Info().Msgf("Started goroutine")
 						}
-						defer func() { <-semaphore }()
+						defer wg.Done()
+						//semaphore <- struct{}{}
+						//if *debug {
+						//	log.Info().Msgf("add semaphore")
+						//}
+						//defer func() { <-semaphore }()
 
 						select {
 						case <-ctx.Done():
