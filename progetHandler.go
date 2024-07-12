@@ -150,7 +150,7 @@ func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPack
 			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 			if !destPackageMap[key][version] {
 				if sourcePackageMap[key][version] {
-					//log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s not found.", pkg.Group, pkg.Name, version)
+					log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s not found.", pkg.Group, pkg.Name, version)
 					packagesToSync = append(packagesToSync, Package{
 						Group:    pkg.Group,
 						Name:     pkg.Name,
@@ -158,7 +158,7 @@ func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPack
 					})
 				}
 			} else {
-				//log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
+				log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
 			}
 		}
 	}
