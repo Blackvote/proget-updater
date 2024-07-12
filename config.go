@@ -126,3 +126,12 @@ func createDeleteDirectoryContents(dir string) error {
 
 	return nil
 }
+
+func cleanURL(url string) string {
+	parts := strings.SplitN(url, "://", 2)
+	if len(parts) != 2 {
+		return url
+	}
+	parts[1] = strings.ReplaceAll(parts[1], "//", "/")
+	return parts[0] + "://" + parts[1]
+}

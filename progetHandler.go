@@ -135,6 +135,14 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 		log.Info().Str("url", chain.Destination.URL).Msgf("Sync package")
 	}
 
+	// обрезаем список пакетов до ProceedPackageLimit, отчищая память выделяемую на первоначальный срез
+	if len(sourcePackages) > config.ProceedPackageLimit {
+		sourcePackages = sourcePackages[:config.ProceedPackageLimit]
+		newSourcePackages := make([]Package, len(sourcePackages))
+		copy(newSourcePackages, sourcePackages)
+		sourcePackages = newSourcePackages
+	}
+
 	sourcePackageMap := make(map[string]map[string]bool)
 	if *debug {
 		log.Info().Str("url", chain.Destination.URL).Msgf("Create source package map")
@@ -176,10 +184,6 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 		}
 	}
 
-	if len(sourcePackageMap) < config.ProceedPackageLimit {
-		config.ProceedPackageLimit = len(sourcePackageMap)
-	}
-	//semaphore := make(chan struct{}, config.ProceedPackageLimit)
 	var wg sync.WaitGroup
 	if *debug {
 		log.Info().Msgf("Start goroutine loop")
@@ -207,11 +211,6 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 							log.Info().Msgf("Started goroutine")
 						}
 						defer wg.Done()
-						//semaphore <- struct{}{}
-						//if *debug {
-						//	log.Info().Msgf("add semaphore")
-						//}
-						//defer func() { <-semaphore }()
 
 						select {
 						case <-ctx.Done():
@@ -249,16 +248,16 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 	}
 	switch chain.Type {
 	case "upack":
-		downloadURL = fmt.Sprintf("%s/%s/%s/download/%s/%s/%s", chain.Source.URL, chain.Type, chain.Source.Feed, pkg.Group, pkg.Name, version)
-		uploadURL = fmt.Sprintf("%s/%s/%s/upload", chain.Destination.URL, chain.Type, chain.Destination.Feed)
+		downloadURL = cleanURL(fmt.Sprintf("%s/%s/%s/download/%s/%s/%s", chain.Source.URL, chain.Type, chain.Source.Feed, pkg.Group, pkg.Name, version))
+		uploadURL = cleanURL(fmt.Sprintf("%s/%s/%s/upload", chain.Destination.URL, chain.Type, chain.Destination.Feed))
 		filePath = filepath.Join(savePath, fmt.Sprintf("%s.%s.upack", pkg.Name, version))
 	case "nuget":
-		downloadURL = fmt.Sprintf("%s/%s/%s/package/%s/%s", chain.Source.URL, chain.Type, chain.Source.Feed, pkg.Name, version)
-		uploadURL = fmt.Sprintf("%s/%s/%s/upload", chain.Destination.URL, chain.Type, chain.Destination.Feed)
+		downloadURL = cleanURL(fmt.Sprintf("%s/%s/%s/package/%s/%s", chain.Source.URL, chain.Type, chain.Source.Feed, pkg.Name, version))
+		uploadURL = cleanURL(fmt.Sprintf("%s/%s/%s/upload", chain.Destination.URL, chain.Type, chain.Destination.Feed))
 		filePath = filepath.Join(savePath, fmt.Sprintf("%s.%s.nupkg", pkg.Name, version))
 	case "asset":
-		downloadURL = fmt.Sprintf("%s/endpoints/%s/content/%s", chain.Source.URL, chain.Source.Feed, pkg.Name)
-		uploadURL = fmt.Sprintf("%s/endpoints/%s/content/%s", chain.Destination.URL, chain.Destination.Feed, pkg.Name)
+		downloadURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/content/%s", chain.Source.URL, chain.Source.Feed, pkg.Name))
+		uploadURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/content/%s", chain.Destination.URL, chain.Destination.Feed, pkg.Name))
 		filePath = filepath.Join(savePath, pkg.Name)
 	}
 
