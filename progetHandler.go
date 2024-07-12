@@ -143,6 +143,12 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 		sourcePackages = newSourcePackages
 	}
 
+	for i := range sourcePackages {
+		if len(sourcePackages[i].Versions) > config.ProceedPackageVersion-1 {
+			sourcePackages[i].Versions = []string{sourcePackages[i].Versions[0]}
+		}
+	}
+
 	sourcePackageMap := make(map[string]map[string]bool)
 	if *debug {
 		log.Info().Str("url", chain.Destination.URL).Msgf("Create source package map")

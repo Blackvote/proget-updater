@@ -11,10 +11,11 @@ import (
 )
 
 type Config struct {
-	SyncChain           []SyncChain     `yaml:"syncChain"`
-	Timeout             TimeoutConfig   `yaml:"timeout"`
-	ProceedPackageLimit int             `yaml:"proceedPackageLimit"`
-	Retention           RetentionConfig `yaml:"retention"`
+	SyncChain             []SyncChain     `yaml:"syncChain"`
+	Timeout               TimeoutConfig   `yaml:"timeout"`
+	ProceedPackageLimit   int             `yaml:"proceedPackageLimit"`
+	ProceedPackageVersion int             `yaml:"proceedPackageVersion"`
+	Retention             RetentionConfig `yaml:"retention"`
 }
 
 type SyncChain struct {
