@@ -14,14 +14,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 )
 
 func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig TimeoutConfig) ([]Package, error) {
-	if *debug {
-		log.Info().Str("url", progetConfig.URL).Msgf("Get package")
-	}
 	var (
 		url      string
 		packages []Package
@@ -59,15 +55,9 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 			continue
 		}
 
-		if *debug {
-			log.Info().Str("url", url).Msgf("Switch to choose package decode way. case: %s", progetConfig.Type)
-		}
 		if err == nil && resp.StatusCode == http.StatusOK {
 			switch progetConfig.Type {
 			case "upack":
-				if *debug {
-					log.Info().Str("url", url).Msgf("Decoding json")
-				}
 				err = json.NewDecoder(strings.NewReader(bodyStr)).Decode(&packages)
 				if err != nil {
 					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
@@ -75,9 +65,6 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 					continue
 				}
 			case "nuget":
-				if *debug {
-					log.Info().Str("url", url).Msgf("Decoding xml")
-				}
 				packages, err = decodeXML(bodyStr)
 				if err != nil {
 					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
@@ -85,9 +72,6 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 					continue
 				}
 			case "asset":
-				if *debug {
-					log.Info().Str("url", url).Msgf("Decoding json")
-				}
 				err = json.NewDecoder(strings.NewReader(bodyStr)).Decode(&assets)
 				if err != nil {
 					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
@@ -117,50 +101,16 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 
 		}
 
-		//log.Info().Str("url", url).Msgf("Package count in %s/%s: %d", progetConfig.URL, progetConfig.Feed, len(packages))
-		//
-		//var packageList strings.Builder
-		//for _, pkg := range packages {
-		//	packageList.WriteString(fmt.Sprintf("%s/%s: %s | ", pkg.Group, pkg.Name, strings.Join(pkg.Versions, " ")))
-		//}
-
-		//log.Info().Str("url", url).Msg(packageList.String())
+		log.Info().Str("url", url).Msgf("Package count: %d", len(packages))
 		return packages, nil
 	}
 	return nil, fmt.Errorf("failed to get package after %d attempts", maxRetries)
 }
 
-func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePackages, destPackages []Package, savePath string) error {
-	if *debug {
-		log.Info().Str("url", chain.Destination.URL).Msgf("Sync package")
-	}
-
-	if len(sourcePackages) > config.ProceedPackageLimit {
-		sourcePackages = sourcePackages[:config.ProceedPackageLimit]
-		newSourcePackages := make([]Package, len(sourcePackages))
-		copy(newSourcePackages, sourcePackages)
-		sourcePackages = newSourcePackages
-	}
-
-	for i := range sourcePackages {
-		if len(sourcePackages[i].Versions) > config.ProceedPackageVersion-1 {
-			sourcePackages[i].Versions = []string{sourcePackages[i].Versions[0]}
-		}
-	}
-
-	log.Info().Str("url", chain.Destination.URL).Msgf("Package will be synced: %d", len(sourcePackages))
-
-	var packageList strings.Builder
-	for _, pkg := range sourcePackages {
-		packageList.WriteString(fmt.Sprintf("%s/%s: %s | ", pkg.Group, pkg.Name, strings.Join(pkg.Versions, " ")))
-	}
-
-	log.Info().Str("url", chain.Destination.URL).Msg(packageList.String())
+func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPackages []Package) ([]Package, error) {
+	var packagesToSync []Package
 
 	sourcePackageMap := make(map[string]map[string]bool)
-	if *debug {
-		log.Info().Str("url", chain.Destination.URL).Msgf("Create source package map")
-	}
 	for _, pkg := range sourcePackages {
 		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 		if sourcePackageMap[key] == nil {
@@ -185,9 +135,6 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 	}
 
 	destPackageMap := make(map[string]map[string]bool)
-	if *debug {
-		log.Info().Str("url", chain.Destination.URL).Msgf("Create dest package map")
-	}
 	for _, pkg := range destPackages {
 		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 		if destPackageMap[key] == nil {
@@ -198,60 +145,27 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 		}
 	}
 
-	var wg sync.WaitGroup
-	if *debug {
-		log.Info().Msgf("Start goroutine loop")
-	}
 	for _, pkg := range sourcePackages {
-		if *debug {
-			log.Info().Msgf("Sync package 1st for")
-		}
 		for _, version := range pkg.Versions {
-			if *debug {
-				log.Info().Msgf("Sync package 2nd for")
-			}
 			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 			if !destPackageMap[key][version] {
 				if sourcePackageMap[key][version] {
-					if *debug {
-						log.Info().Msgf("Add waitGroup")
-					}
-					wg.Add(1)
-					if *debug {
-						log.Info().Msgf("Start goroutine")
-					}
-					go func(pkg Package, version string) {
-						if *debug {
-							log.Info().Msgf("Started goroutine")
-						}
-						defer wg.Done()
-
-						select {
-						case <-ctx.Done():
-							log.Warn().Str("url", chain.Destination.URL).Msgf("%s:%s:%s Sync cancelled(timeout)", pkg.Group, pkg.Name, version)
-							return
-						default:
-						}
-						log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s not found. Syncing", pkg.Group, pkg.Name, version)
-						err := downloadAndUploadPackage(ctx, config, chain, pkg, version, savePath)
-						if err != nil {
-							log.Error().Err(err).Str("url", chain.Destination.URL).Msgf("Failed to Sync package %s:%s", pkg.Name, version)
-						}
-					}(pkg, version)
+					//log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s not found.", pkg.Group, pkg.Name, version)
+					packagesToSync = append(packagesToSync, Package{
+						Group:    pkg.Group,
+						Name:     pkg.Name,
+						Versions: []string{version},
+					})
 				}
 			} else {
-				log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
+				//log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
 			}
 		}
 	}
-	wg.Wait()
-	return nil
+	return packagesToSync, nil
 }
 
 func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncChain, pkg Package, version, savePath string) error {
-	if *debug {
-		log.Info().Str("url", chain.Destination.URL).Msgf("DownloadAndUpload package")
-	}
 	var (
 		downloadURL,
 		uploadURL,
@@ -346,8 +260,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 
 			out.Close()
 			fileSizeMB := float64(fileSize) / (1024 * 1024)
-			log.Info().Str("url", url).Msgf("%s file Size: %.2f MB", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), fileSizeMB)
-			log.Info().Str("url", url).Msgf("Success download %s", strings.TrimPrefix(filePath, "packages\\"))
+			log.Info().Str("url", url).Msgf("Success download %s. File Size: %.2f MB", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB)
 			return nil
 		}
 
@@ -553,9 +466,15 @@ func apiCall(client *http.Client, req *http.Request) (*http.Response, string, er
 	}
 	defer resp.Body.Close()
 
+	if *debug {
+		log.Info().Str("url", req.URL.String()).Msgf("Read body...")
+	}
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, "", err
+	}
+	if *debug {
+		log.Info().Str("url", req.URL.String()).Msgf("Success read body...")
 	}
 	bodyString := string(bodyBytes)
 

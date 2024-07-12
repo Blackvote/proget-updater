@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"github.com/rs/zerolog/log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -114,10 +116,40 @@ func run(parentCtx context.Context) error {
 				continue
 			}
 
-			err = SyncPackages(parentCtx, config, chain, sourcePackages, destPackages, *savePath)
+			syncPackages, err := getPackagesToSync(config, chain, sourcePackages, destPackages)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to SyncChain packages")
 				continue
+			}
+
+			if len(syncPackages) > config.ProceedPackageLimit {
+				syncPackages = syncPackages[:config.ProceedPackageLimit]
+				newSourcePackages := make([]Package, len(syncPackages))
+				copy(newSourcePackages, syncPackages)
+				syncPackages = newSourcePackages
+			}
+
+			for i := range syncPackages {
+				if len(sourcePackages[i].Versions) > 0 {
+					sourcePackages[i].Versions = []string{sourcePackages[i].Versions[0]}
+				}
+			}
+
+			log.Info().Msgf("Will sync %d packages with %d versions", len(syncPackages), config.ProceedPackageVersion)
+
+			var packageList strings.Builder
+			for _, pkg := range syncPackages {
+				packageList.WriteString(fmt.Sprintf("%s/%s: %s | ", pkg.Group, pkg.Name, strings.Join(pkg.Versions, " ")))
+			}
+			log.Info().Str("url", chain.Destination.URL).Msg(packageList.String())
+
+			for _, pkg := range syncPackages {
+				for _, version := range pkg.Versions {
+					err := downloadAndUploadPackage(parentCtx, config, chain, pkg, version, *savePath)
+					if err != nil {
+						log.Error().Err(err).Str("url", chain.Destination.URL).Msgf("Failed to Sync package %s:%s", pkg.Name, version)
+					}
+				}
 			}
 
 			if config.Retention.Enabled {
