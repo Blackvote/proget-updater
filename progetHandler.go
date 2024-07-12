@@ -66,7 +66,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 			switch progetConfig.Type {
 			case "upack":
 				if *debug {
-					log.Info().Str("url", url).Msgf("Decoding json %s", bodyStr)
+					log.Info().Str("url", url).Msgf("Decoding json")
 				}
 				err = json.NewDecoder(strings.NewReader(bodyStr)).Decode(&packages)
 				if err != nil {
@@ -76,7 +76,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 				}
 			case "nuget":
 				if *debug {
-					log.Info().Str("url", url).Msgf("Decoding xml %s", bodyStr)
+					log.Info().Str("url", url).Msgf("Decoding xml")
 				}
 				packages, err = decodeXML(bodyStr)
 				if err != nil {
@@ -86,7 +86,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 				}
 			case "asset":
 				if *debug {
-					log.Info().Str("url", url).Msgf("Decoding json %s", bodyStr)
+					log.Info().Str("url", url).Msgf("Decoding json")
 				}
 				err = json.NewDecoder(strings.NewReader(bodyStr)).Decode(&assets)
 				if err != nil {
@@ -117,14 +117,14 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 
 		}
 
-		log.Info().Str("url", url).Msgf("Package count in %s/%s: %d", progetConfig.URL, progetConfig.Feed, len(packages))
+		//log.Info().Str("url", url).Msgf("Package count in %s/%s: %d", progetConfig.URL, progetConfig.Feed, len(packages))
+		//
+		//var packageList strings.Builder
+		//for _, pkg := range packages {
+		//	packageList.WriteString(fmt.Sprintf("%s/%s: %s | ", pkg.Group, pkg.Name, strings.Join(pkg.Versions, " ")))
+		//}
 
-		var packageList strings.Builder
-		for _, pkg := range packages {
-			packageList.WriteString(fmt.Sprintf("%s/%s: %s | ", pkg.Group, pkg.Name, strings.Join(pkg.Versions, " ")))
-		}
-
-		log.Info().Str("url", url).Msg(packageList.String())
+		//log.Info().Str("url", url).Msg(packageList.String())
 		return packages, nil
 	}
 	return nil, fmt.Errorf("failed to get package after %d attempts", maxRetries)
@@ -135,7 +135,6 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 		log.Info().Str("url", chain.Destination.URL).Msgf("Sync package")
 	}
 
-	// обрезаем список пакетов до ProceedPackageLimit, отчищая память выделяемую на первоначальный срез
 	if len(sourcePackages) > config.ProceedPackageLimit {
 		sourcePackages = sourcePackages[:config.ProceedPackageLimit]
 		newSourcePackages := make([]Package, len(sourcePackages))
@@ -148,6 +147,15 @@ func SyncPackages(ctx context.Context, config *Config, chain SyncChain, sourcePa
 			sourcePackages[i].Versions = []string{sourcePackages[i].Versions[0]}
 		}
 	}
+
+	log.Info().Str("url", chain.Destination.URL).Msgf("Package will be synced: %d", len(sourcePackages))
+
+	var packageList strings.Builder
+	for _, pkg := range sourcePackages {
+		packageList.WriteString(fmt.Sprintf("%s/%s: %s | ", pkg.Group, pkg.Name, strings.Join(pkg.Versions, " ")))
+	}
+
+	log.Info().Str("url", chain.Destination.URL).Msg(packageList.String())
 
 	sourcePackageMap := make(map[string]map[string]bool)
 	if *debug {
