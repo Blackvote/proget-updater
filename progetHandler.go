@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -55,7 +54,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 			continue
 		}
 
-		if err == nil && resp.StatusCode == http.StatusOK {
+		if resp.StatusCode == http.StatusOK {
 			switch progetConfig.Type {
 			case "upack":
 				err = json.NewDecoder(strings.NewReader(bodyStr)).Decode(&packages)
@@ -108,8 +107,6 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 }
 
 func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPackages []Package) ([]Package, error) {
-	var packagesToSync []Package
-
 	sourcePackageMap := make(map[string]map[string]bool)
 	for _, pkg := range sourcePackages {
 		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
@@ -145,23 +142,34 @@ func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPack
 		}
 	}
 
+	packagesToSyncMap := make(map[string]*Package)
 	for _, pkg := range sourcePackages {
 		for _, version := range pkg.Versions {
 			key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
 			if !destPackageMap[key][version] {
 				if sourcePackageMap[key][version] {
-					log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s not found.", pkg.Group, pkg.Name, version)
-					packagesToSync = append(packagesToSync, Package{
-						Group:    pkg.Group,
-						Name:     pkg.Name,
-						Versions: []string{version},
-					})
+					log.Printf("%s:%s:%s not found.", pkg.Group, pkg.Name, version)
+					if existingPkg, exists := packagesToSyncMap[key]; exists {
+						existingPkg.Versions = append(existingPkg.Versions, version)
+					} else {
+						packagesToSyncMap[key] = &Package{
+							Group:    pkg.Group,
+							Name:     pkg.Name,
+							Versions: []string{version},
+						}
+					}
 				}
 			} else {
-				log.Info().Str("url", chain.Destination.URL).Msgf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
+				log.Printf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
 			}
 		}
 	}
+
+	packagesToSync := make([]Package, 0, len(packagesToSyncMap))
+	for _, pkg := range packagesToSyncMap {
+		packagesToSync = append(packagesToSync, *pkg)
+	}
+
 	return packagesToSync, nil
 }
 
@@ -214,11 +222,8 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
-	var resp *http.Response
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-
 		log.Info().Str("url", url).Msgf("Attempt download %d file %s", attempt, filePath)
-
 		resp, bodyStr, err := apiCall(client, req)
 
 		if err != nil {
@@ -231,7 +236,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			continue
 		}
 
-		if err == nil && resp.StatusCode == http.StatusOK {
+		if resp.StatusCode == http.StatusOK {
 			dir := filepath.Dir(filePath)
 			err := os.MkdirAll(dir, os.ModePerm)
 			if err != nil {
@@ -241,12 +246,6 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			out, err := os.Create(filePath)
 			if err != nil {
 				fmt.Println("Error creating file:", err)
-				time.Sleep(3 * time.Duration(attempt) * time.Second)
-				continue
-			}
-
-			if err != nil {
-				log.Error().Err(err).Str("url", url).Msgf("Failed to create file %s", filePath)
 				time.Sleep(3 * time.Duration(attempt) * time.Second)
 				continue
 			}
@@ -265,13 +264,6 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 		}
 
 		time.Sleep(3 * time.Duration(attempt) * time.Second)
-	}
-	if resp != nil {
-		return fmt.Errorf("failed to download %s after %d attempts. Status: %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), maxRetries, resp.Status)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to download %s after %d attempts. Error: %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), maxRetries, err)
 	}
 	return nil
 }
@@ -313,7 +305,6 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 	req.Header.Add("X-ApiKey", apiKey)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	var resp *http.Response
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt %d upload for file %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 
@@ -328,7 +319,7 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 			continue
 		}
 
-		if resp == nil && err != nil {
+		if resp == nil {
 			log.Info().Str("url", url).Msgf("Failed %d attempt. Cant get responce. Error: %s", attempt, err)
 			time.Sleep(3 * time.Duration(attempt) * time.Second)
 			continue
@@ -343,14 +334,6 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 		log.Warn().Str("url", url).Msgf("Failed %d attempt. Status Code: %d. Body: %s", attempt, resp.StatusCode, bodyStr)
 		time.Sleep(3 * time.Duration(attempt) * time.Second)
 		continue
-	}
-
-	if resp != nil {
-		return fmt.Errorf("failed to upload %s after %d attempts. Status: %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), maxRetries, resp.Status)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to upload %s after %d attempts. Error: %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), maxRetries, err)
 	}
 	return fmt.Errorf("failed to upload %s after %d attempts", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), maxRetries)
 }
@@ -422,13 +405,18 @@ func fetchAssets(url string, parentPath, apiKey string) ([]Asset, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("error fetching assets: %v", resp.Status)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -457,14 +445,21 @@ func fetchAssets(url string, parentPath, apiKey string) ([]Asset, error) {
 }
 
 func apiCall(client *http.Client, req *http.Request) (*http.Response, string, error) {
+
 	resp, err := client.Do(req)
-	if *debug {
-		log.Info().Str("url", req.URL.String()).Msgf("get resp %d", resp.StatusCode)
-	}
+
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	if *debug {
+		log.Info().Str("url", req.URL.String()).Msgf("get resp %d", resp.StatusCode)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
 
 	if *debug {
 		log.Info().Str("url", req.URL.String()).Msgf("Read body...")
@@ -473,10 +468,6 @@ func apiCall(client *http.Client, req *http.Request) (*http.Response, string, er
 	if err != nil {
 		return nil, "", err
 	}
-	if *debug {
-		log.Info().Str("url", req.URL.String()).Msgf("Success read body...")
-	}
 	bodyString := string(bodyBytes)
-
 	return resp, bodyString, nil
 }

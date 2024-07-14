@@ -7,6 +7,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"net/http"
 	_ "net/http/pprof"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -99,6 +100,16 @@ func run(parentCtx context.Context) error {
 	}
 
 	for _, chain := range config.SyncChain {
+		_, err := url.ParseRequestURI(chain.Source.URL)
+		if err != nil {
+			fmt.Println("Invalid source URI:", err)
+		}
+
+		_, err = url.ParseRequestURI(chain.Destination.URL)
+		if err != nil {
+			fmt.Println("Invalid dest URI:", err)
+		}
+
 		select {
 		case <-parentCtx.Done():
 			log.Warn().Msgf("Timeout or cancel signal received, exiting run. Timeout: %d seconds", config.Timeout.SyncTimeout)
