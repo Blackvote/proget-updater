@@ -122,6 +122,10 @@ func run(parentCtx context.Context) error {
 				continue
 			}
 
+			if *debug {
+				log.Debug().Msgf("syncPackage = %d", len(syncPackages))
+			}
+
 			if len(syncPackages) > config.ProceedPackageLimit {
 				syncPackages = syncPackages[:config.ProceedPackageLimit]
 				newSourcePackages := make([]Package, len(syncPackages))
@@ -143,13 +147,29 @@ func run(parentCtx context.Context) error {
 			}
 			log.Info().Str("url", chain.Destination.URL).Msg(packageList.String())
 
+			var wg sync.WaitGroup
+
+			errCh := make(chan error, len(syncPackages))
+
 			for _, pkg := range syncPackages {
 				for _, version := range pkg.Versions {
-					err := downloadAndUploadPackage(parentCtx, config, chain, pkg, version, *savePath)
-					if err != nil {
-						log.Error().Err(err).Str("url", chain.Destination.URL).Msgf("Failed to Sync package %s:%s", pkg.Name, version)
-					}
+					wg.Add(1)
+					go func(pkg Package, version string) {
+						defer wg.Done()
+						err := downloadAndUploadPackage(parentCtx, config, chain, pkg, version, *savePath)
+						if err != nil {
+							errCh <- fmt.Errorf("failed to sync package %s:%s, error: %w", pkg.Name, version, err)
+						}
+					}(pkg, version)
+
 				}
+			}
+
+			wg.Wait()
+			close(errCh)
+
+			for err := range errCh {
+				log.Error().Err(err).Msg("Error occurred during package sync")
 			}
 
 			if config.Retention.Enabled {
