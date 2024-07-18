@@ -399,7 +399,6 @@ func fetchAssets(url string, parentPath, apiKey string) ([]Asset, error) {
 	}
 
 	req.Header.Add("X-ApiKey", apiKey)
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
