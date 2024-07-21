@@ -181,6 +181,7 @@ func run(parentCtx context.Context) error {
 
 			for err := range errCh {
 				log.Error().Err(err).Msg("Error occurred during package sync")
+				return err
 			}
 
 			if config.Retention.Enabled {

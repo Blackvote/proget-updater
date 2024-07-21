@@ -31,6 +31,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +80,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 				}
 				for _, asset := range assets {
 					if asset.Type == "dir" {
-						subAssets, err := fetchAssets(url+"/"+asset.Name, asset.Name, progetConfig.APIKey)
+						subAssets, err := fetchAssets(client, url+"/"+asset.Name, asset.Name, progetConfig.APIKey)
 						if err != nil {
 							return nil, err
 						}
@@ -389,10 +390,9 @@ func decodeXML(bodyStr string) ([]Package, error) {
 	return packages, nil
 }
 
-func fetchAssets(url string, parentPath, apiKey string) ([]Asset, error) {
+func fetchAssets(client *http.Client, url string, parentPath, apiKey string) ([]Asset, error) {
 	var allAssets []Asset
 
-	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -411,13 +411,13 @@ func fetchAssets(url string, parentPath, apiKey string) ([]Asset, error) {
 		}
 	}(resp.Body)
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("error fetching assets: %v", resp.Status)
-	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error fetching assets: %v", resp.Status)
 	}
 
 	var assets []Asset
@@ -429,7 +429,7 @@ func fetchAssets(url string, parentPath, apiKey string) ([]Asset, error) {
 	for _, asset := range assets {
 		fullName := parentPath + "/" + asset.Name
 		if asset.Type == "dir" {
-			subAssets, err := fetchAssets(url+"/"+asset.Name, fullName, apiKey)
+			subAssets, err := fetchAssets(client, url+"/"+asset.Name, fullName, apiKey)
 			if err != nil {
 				return nil, err
 			}
@@ -446,7 +446,6 @@ func fetchAssets(url string, parentPath, apiKey string) ([]Asset, error) {
 func apiCall(client *http.Client, req *http.Request) (*http.Response, string, error) {
 
 	resp, err := client.Do(req)
-
 	if err != nil {
 		return nil, "", err
 	}
@@ -468,5 +467,8 @@ func apiCall(client *http.Client, req *http.Request) (*http.Response, string, er
 		return nil, "", err
 	}
 	bodyString := string(bodyBytes)
+	if *debug {
+		log.Info().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
+	}
 	return resp, bodyString, nil
 }
