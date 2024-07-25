@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -43,7 +41,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt %d to get package list", attempt)
-		resp, bodyStr, err := apiCall(client, req)
+		resp, bodyStr, err := apiCallReadBody(client, req)
 
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if bodyStr != "" {
@@ -160,9 +158,10 @@ func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPack
 						}
 					}
 				}
-			} else {
-				log.Printf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
 			}
+			//else {
+			//	log.Printf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
+			//}
 		}
 	}
 
@@ -225,14 +224,16 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt download %d file %s", attempt, filePath)
-		resp, bodyStr, err := apiCall(client, req)
+		resp, err := client.Do(req)
+
+		if *debug {
+			log.Debug().Str("url", req.URL.String()).Msgf("get resp %d", resp.StatusCode)
+		}
+		defer resp.Body.Close()
 
 		if err != nil {
-			if bodyStr != "" {
-				log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to download %s. Status: %s", attempt, filePath, resp.Status)
-			} else {
-				log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to download %s", attempt, filePath)
-			}
+			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to download %s. Status: %s", attempt, filePath, resp.Status)
+
 			time.Sleep(3 * time.Duration(attempt) * time.Second)
 			continue
 		}
@@ -244,6 +245,10 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 				fmt.Println("Error creating directories:", err)
 			}
 
+			if *debug {
+				log.Debug().Str("url", req.URL.String()).Msgf("creating empty file %s", filePath)
+			}
+
 			out, err := os.Create(filePath)
 			if err != nil {
 				fmt.Println("Error creating file:", err)
@@ -251,7 +256,11 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 				continue
 			}
 
-			fileSize, err := io.Copy(out, strings.NewReader(bodyStr))
+			if *debug {
+				log.Debug().Str("url", req.URL.String()).Msgf("Copy bytes in file %s", filePath)
+			}
+
+			fileSize, err := io.Copy(out, resp.Body)
 			if err != nil {
 				log.Error().Err(err).Str("url", url).Msgf("Failed to copy response body")
 				time.Sleep(3 * time.Duration(attempt) * time.Second)
@@ -277,45 +286,27 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 	}
 	defer file.Close()
 
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-
-	part, err := writer.CreateFormFile("filename", filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create form file: %w", err)
-	}
-
-	_, err = io.Copy(part, file)
-	if err != nil {
-		return fmt.Errorf("failed to copy file content: %w", err)
-	}
-
-	err = writer.Close()
-	if err != nil {
-		return fmt.Errorf("failed to close writer: %w", err)
-	}
-
 	client := &http.Client{
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
-	req, err := http.NewRequestWithContext(ctx, "PUT", url, body)
+
+	if *debug {
+		log.Debug().Str("url", url).Msgf("create upload reqeest. File: %s", filePath)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, file)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Add("X-ApiKey", apiKey)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt %d upload for file %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 
-		resp, bodyStr, err := apiCall(client, req)
+		resp, err := apiCall(client, req)
 		if err != nil {
-			if bodyStr != "" {
-				log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to upload %s. Status: %s", attempt, filePath, resp.Status)
-			} else {
-				log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to upload %s", attempt, filePath)
-			}
+			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to upload %s", attempt, filePath)
 			time.Sleep(3 * time.Duration(attempt) * time.Second)
 			continue
 		}
@@ -332,7 +323,7 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 			return nil
 		}
 
-		log.Warn().Str("url", url).Msgf("Failed %d attempt. Status Code: %d. Body: %s", attempt, resp.StatusCode, bodyStr)
+		log.Warn().Str("url", url).Msgf("Failed %d attempt. Status Code: %d.", attempt, resp.StatusCode)
 		time.Sleep(3 * time.Duration(attempt) * time.Second)
 		continue
 	}
@@ -443,7 +434,7 @@ func fetchAssets(client *http.Client, url string, parentPath, apiKey string) ([]
 	return allAssets, nil
 }
 
-func apiCall(client *http.Client, req *http.Request) (*http.Response, string, error) {
+func apiCallReadBody(client *http.Client, req *http.Request) (*http.Response, string, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -471,4 +462,28 @@ func apiCall(client *http.Client, req *http.Request) (*http.Response, string, er
 		log.Info().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
 	}
 	return resp, bodyString, nil
+}
+
+func apiCall(client *http.Client, req *http.Request) (*http.Response, error) {
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if *debug {
+		log.Info().Str("url", req.URL.String()).Msgf("get resp %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+
+	if *debug {
+		log.Info().Str("url", req.URL.String()).Msgf("Read body...")
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		bodyString := string(bodyBytes)
+		log.Info().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
+	}
+	return resp, nil
 }

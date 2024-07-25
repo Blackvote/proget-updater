@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/rs/zerolog/log"
-	"net/http"
 	_ "net/http/pprof"
 	"net/url"
 	"os"
@@ -34,9 +33,6 @@ func init() {
 }
 
 func main() {
-	go func() {
-		log.Print(http.ListenAndServe("localhost:6060", nil))
-	}()
 	if *logFilePath != "" {
 		logFile, err := setupLogging(*logFilePath)
 		if err != nil {
