@@ -9,13 +9,16 @@ import (
 )
 
 func retention(ctx context.Context, config *Config, chain SyncChain, packages []Package) error {
+	client := &http.Client{
+		Timeout: time.Duration(config.Timeout.WebRequestTimeout) * time.Second,
+	}
+
 	for _, pkg := range packages {
 		if len(pkg.Versions) <= config.Retention.VersionLimit {
 			log.Info().Str("url", chain.Destination.URL).Msgf("Version limit less than version, skip retention")
 			continue
 		}
 
-		var resp *http.Response
 		for i, version := range pkg.Versions {
 			if i > config.Retention.VersionLimit-1 {
 				deleteURL := fmt.Sprintf("%s/upack/%s/delete/%s/%s/%s", chain.Destination.URL, chain.Destination.Feed, pkg.Group, pkg.Name, version)
@@ -26,29 +29,24 @@ func retention(ctx context.Context, config *Config, chain SyncChain, packages []
 						log.Error().Str("url", deleteURL).Msgf("Failed to create reqeust for %s", deleteURL)
 						continue
 					}
-
 					req.Header.Set("X-ApiKey", chain.Destination.APIKey)
-					client := &http.Client{}
-
 					for attempt := 1; attempt <= maxRetries; attempt++ {
 						log.Info().Str("url", deleteURL).Msgf("Attempt %d to delete %s/%s:%s", attempt, pkg.Group, pkg.Name, version)
 
-						resp, err := client.Do(req)
-						if err == nil && resp.StatusCode == http.StatusOK {
-							resp.Body.Close()
-							log.Info().Str("url", deleteURL).Msgf("Success delete %s/%s:%s", pkg.Group, pkg.Name, version)
-							break
+						resp, err := apiCall(client, req)
+						if err != nil || resp.StatusCode != http.StatusOK {
+							log.Error().Str("url", deleteURL).Msgf("Failed to delete %s/%s:%s. Error: %s", pkg.Group, pkg.Name, version, resp.Status)
+							continue
 						}
 
-						time.Sleep(3 * time.Duration(attempt) * time.Second)
-					}
-					if resp != nil {
-						log.Error().Str("url", deleteURL).Msgf("Failed to delete %s/%s:%s. Status: %s", pkg.Group, pkg.Name, version, resp.Status)
-						resp.Body.Close()
-					}
+						if resp.StatusCode == http.StatusOK {
+							log.Info().Str("url", deleteURL).Msgf("Success delete %s/%s:%s", pkg.Group, pkg.Name, version)
+							return nil
+						}
 
-					if err != nil {
-						log.Error().Str("url", deleteURL).Msgf("Failed to delete %s/%s:%s. Error: %s", pkg.Group, pkg.Name, version, resp.Status)
+						log.Warn().Str("url", deleteURL).Msgf("Failed %d attempt. Status Code: %d.", attempt, resp.StatusCode)
+						time.Sleep(3 * time.Duration(attempt) * time.Second)
+						continue
 					}
 				} else {
 					log.Info().Str("url", deleteURL).Msgf("Skip delete: %s/%s:%s (dry-run is on)", pkg.Group, pkg.Name, version)

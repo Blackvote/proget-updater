@@ -69,6 +69,6 @@ jobs:
         tag: ${{ github.ref_name }}
         body: |
           Release of updater version ${{ github.ref_name }}.
-          Dont forget to create "config.yml" (https://github.com/deeplay-io/tools-neo-proget-updater/blob/goUpdater/config.example.yml).
+          Dont forget to create "config.yml" (./config.example.yml).
         draft: false
         prerelease: false

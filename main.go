@@ -187,11 +187,12 @@ func run(parentCtx context.Context) error {
 					log.Error().Err(err).Msg("Failed to get packages from destination")
 					continue
 				}
-
-				err = retention(parentCtx, config, chain, destPackages)
-				if err != nil {
-					log.Error().Err(err).Msg("Retention failed")
-					continue
+				if chain.Type != "assets" {
+					err = retention(parentCtx, config, chain, destPackages)
+					if err != nil {
+						log.Error().Err(err).Msg("Retention failed")
+						continue
+					}
 				}
 			}
 		}
