@@ -144,7 +144,11 @@ func run(parentCtx context.Context) error {
 				}
 			}
 
-			log.Info().Msgf("Will sync %d packages with %d versions", len(syncPackages), config.ProceedPackageVersion)
+			if config.ProceedPackageVersion > config.Retention.VersionLimit {
+				log.Info().Msgf("Will sync %d packages with %d versions", len(syncPackages), config.Retention.VersionLimit)
+			} else {
+				log.Info().Msgf("Will sync %d packages with %d versions", len(syncPackages), config.ProceedPackageVersion)
+			}
 
 			var packageList strings.Builder
 			for _, pkg := range syncPackages {
@@ -166,7 +170,6 @@ func run(parentCtx context.Context) error {
 							errCh <- fmt.Errorf("failed to sync package %s:%s, error: %w", pkg.Name, version, err)
 						}
 					}(pkg, version)
-
 				}
 			}
 
@@ -178,19 +181,17 @@ func run(parentCtx context.Context) error {
 				return err
 			}
 
-			if config.Retention.Enabled {
+			if config.Retention.Enabled && chain.Type != "assets" {
 				log.Info().Msgf("Start retention")
 				destPackages, err = getPackages(parentCtx, chain.Destination, config.Timeout)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to get packages from destination")
 					continue
 				}
-				if chain.Type != "assets" {
-					err = retention(parentCtx, config, chain, destPackages)
-					if err != nil {
-						log.Error().Err(err).Msg("Retention failed")
-						continue
-					}
+				err = retention(parentCtx, config, chain, destPackages)
+				if err != nil {
+					log.Error().Err(err).Msg("Retention failed")
+					continue
 				}
 			}
 		}

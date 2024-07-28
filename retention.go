@@ -45,7 +45,7 @@ func retention(ctx context.Context, config *Config, chain SyncChain, packages []
 						}
 
 						log.Warn().Str("url", deleteURL).Msgf("Failed %d attempt. Status Code: %d.", attempt, resp.StatusCode)
-						time.Sleep(3 * time.Duration(attempt) * time.Second)
+						time.Sleep(5 * time.Duration(attempt) * time.Second)
 						continue
 					}
 				} else {

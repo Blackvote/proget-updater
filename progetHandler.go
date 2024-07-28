@@ -42,14 +42,16 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 		log.Info().Str("url", url).Msgf("Attempt %d to get package list", attempt)
 		resp, body, err := apiCall(client, req)
 		bodyString := string(body)
-		log.Info().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
+		if *debug {
+			log.Debug().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
+		}
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if bodyString != "" {
 				log.Error().Err(err).Str("url", url).Msgf("Attempt %d failed to get package. Status: %s", attempt, resp.Status)
 			} else {
 				log.Error().Err(err).Str("url", url).Msgf("Attempt %d failed to get package.", attempt)
 			}
-			time.Sleep(3 * time.Duration(attempt) * time.Second)
+			time.Sleep(5 * time.Duration(attempt) * time.Second)
 			continue
 		}
 
@@ -59,21 +61,21 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 				err = json.NewDecoder(strings.NewReader(bodyString)).Decode(&packages)
 				if err != nil {
 					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
-					time.Sleep(3 * time.Duration(attempt) * time.Second)
+					time.Sleep(5 * time.Duration(attempt) * time.Second)
 					continue
 				}
 			case "nuget":
 				packages, err = decodeXML(bodyString)
 				if err != nil {
 					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
-					time.Sleep(3 * time.Duration(attempt) * time.Second)
+					time.Sleep(5 * time.Duration(attempt) * time.Second)
 					continue
 				}
 			case "asset":
 				err = json.NewDecoder(strings.NewReader(bodyString)).Decode(&assets)
 				if err != nil {
 					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
-					time.Sleep(3 * time.Duration(attempt) * time.Second)
+					time.Sleep(5 * time.Duration(attempt) * time.Second)
 					continue
 				}
 				for _, asset := range assets {
@@ -230,7 +232,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 		}
 		if err != nil || resp.StatusCode != http.StatusOK {
 			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to download %s. Status: %s", attempt, filePath, resp.Status)
-			time.Sleep(3 * time.Duration(attempt) * time.Second)
+			time.Sleep(5 * time.Duration(attempt) * time.Second)
 			continue
 		}
 
@@ -248,7 +250,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			out, err := os.Create(filePath)
 			if err != nil {
 				fmt.Println("Error creating file:", err)
-				time.Sleep(3 * time.Duration(attempt) * time.Second)
+				time.Sleep(5 * time.Duration(attempt) * time.Second)
 				continue
 			}
 
@@ -260,7 +262,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 
 			if err != nil {
 				log.Error().Err(err).Str("url", url).Msgf("Failed to copy response body")
-				time.Sleep(3 * time.Duration(attempt) * time.Second)
+				time.Sleep(5 * time.Duration(attempt) * time.Second)
 				continue
 			}
 
@@ -269,7 +271,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			log.Info().Str("url", url).Msgf("Success download %s. File Size: %.2f MB", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB)
 			return nil
 		}
-		time.Sleep(3 * time.Duration(attempt) * time.Second)
+		time.Sleep(5 * time.Duration(attempt) * time.Second)
 		continue
 	}
 	return nil
@@ -303,7 +305,7 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 		resp, _, err := apiCall(client, req)
 		if err != nil || resp.StatusCode != http.StatusCreated {
 			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to upload %s", attempt, filePath)
-			time.Sleep(3 * time.Duration(attempt) * time.Second)
+			time.Sleep(5 * time.Duration(attempt) * time.Second)
 			continue
 		}
 
@@ -314,7 +316,7 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 		}
 
 		log.Warn().Str("url", url).Msgf("Failed %d attempt. Status Code: %d.", attempt, resp.StatusCode)
-		time.Sleep(3 * time.Duration(attempt) * time.Second)
+		time.Sleep(5 * time.Duration(attempt) * time.Second)
 		continue
 	}
 	return fmt.Errorf("failed to upload %s after %d attempts", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), timeoutConfig.MaxRetries)
