@@ -46,6 +46,7 @@ type TimeoutConfig struct {
 	WebRequestTimeout int `yaml:"webRequestTimeout"`
 	IterationTimeout  int `yaml:"iterationTimeout"`
 	SyncTimeout       int `yaml:"syncTimeout"`
+	MaxRetries        int `yaml:"maxRetries"`
 }
 
 type RetentionConfig struct {

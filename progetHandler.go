@@ -29,22 +29,22 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-
+	req.Header.Set("X-ApiKey", progetConfig.APIKey)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("X-ApiKey", progetConfig.APIKey)
 	client := &http.Client{
 		Timeout: time.Duration(timeoutConfig.IterationTimeout) * time.Second,
 	}
 
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+	for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt %d to get package list", attempt)
-		resp, bodyStr, err := apiCallReadBody(client, req)
-
+		resp, body, err := apiCall(client, req)
+		bodyString := string(body)
+		log.Info().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
 		if err != nil || resp.StatusCode != http.StatusOK {
-			if bodyStr != "" {
+			if bodyString != "" {
 				log.Error().Err(err).Str("url", url).Msgf("Attempt %d failed to get package. Status: %s", attempt, resp.Status)
 			} else {
 				log.Error().Err(err).Str("url", url).Msgf("Attempt %d failed to get package.", attempt)
@@ -56,21 +56,21 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 		if resp.StatusCode == http.StatusOK {
 			switch progetConfig.Type {
 			case "upack":
-				err = json.NewDecoder(strings.NewReader(bodyStr)).Decode(&packages)
+				err = json.NewDecoder(strings.NewReader(bodyString)).Decode(&packages)
 				if err != nil {
 					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
 					time.Sleep(3 * time.Duration(attempt) * time.Second)
 					continue
 				}
 			case "nuget":
-				packages, err = decodeXML(bodyStr)
+				packages, err = decodeXML(bodyString)
 				if err != nil {
 					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
 					time.Sleep(3 * time.Duration(attempt) * time.Second)
 					continue
 				}
 			case "asset":
-				err = json.NewDecoder(strings.NewReader(bodyStr)).Decode(&assets)
+				err = json.NewDecoder(strings.NewReader(bodyString)).Decode(&assets)
 				if err != nil {
 					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
 					time.Sleep(3 * time.Duration(attempt) * time.Second)
@@ -102,7 +102,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 		log.Info().Str("url", url).Msgf("Package count: %d", len(packages))
 		return packages, nil
 	}
-	return nil, fmt.Errorf("failed to get package after %d attempts", maxRetries)
+	return nil, fmt.Errorf("failed to get package after %d attempts", timeoutConfig.MaxRetries)
 }
 
 func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPackages []Package) ([]Package, error) {
@@ -120,10 +120,10 @@ func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPack
 					sourcePackageMap[key][version] = true
 				} else {
 					if !config.Retention.DryRun {
-						sourcePackageMap[key][version] = false
-					} else {
 						log.Warn().Str("url", chain.Destination.URL).Msgf("%s:%s exceedes version limit, will be processed (dry-run is on)", key, version)
 						sourcePackageMap[key][version] = true
+					} else {
+						sourcePackageMap[key][version] = false
 					}
 				}
 			}
@@ -159,9 +159,6 @@ func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPack
 					}
 				}
 			}
-			//else {
-			//	log.Printf("%s:%s:%s found.", pkg.Group, pkg.Name, version)
-			//}
 		}
 	}
 
@@ -214,18 +211,23 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 	log.Info().Str("url", url).Msgf("Download package %s", filePath)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req.Header.Set("X-ApiKey", apiKey)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-ApiKey", apiKey)
+
 	client := &http.Client{
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+	for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt download %d file %s", attempt, filePath)
 
-		resp, err := apiCall(client, req)
+		resp, body, err := apiCall(client, req)
+		bodyString := string(body)
+		if *debug {
+			log.Info().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
+		}
 		if err != nil || resp.StatusCode != http.StatusOK {
 			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to download %s. Status: %s", attempt, filePath, resp.Status)
 			time.Sleep(3 * time.Duration(attempt) * time.Second)
@@ -254,7 +256,8 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 				log.Debug().Str("url", req.URL.String()).Msgf("Copy bytes in file %s", filePath)
 			}
 
-			fileSize, err := io.Copy(out, resp.Body)
+			fileInfo, err := out.Write(body)
+
 			if err != nil {
 				log.Error().Err(err).Str("url", url).Msgf("Failed to copy response body")
 				time.Sleep(3 * time.Duration(attempt) * time.Second)
@@ -262,7 +265,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			}
 
 			out.Close()
-			fileSizeMB := float64(fileSize) / (1024 * 1024)
+			fileSizeMB := float64(fileInfo) / (1024 * 1024)
 			log.Info().Str("url", url).Msgf("Success download %s. File Size: %.2f MB", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB)
 			return nil
 		}
@@ -289,16 +292,15 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "PUT", url, file)
+	req.Header.Add("X-ApiKey", apiKey)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Add("X-ApiKey", apiKey)
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+	for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
 		log.Info().Str("url", url).Msgf("Attempt %d upload for file %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 
-		resp, err := apiCall(client, req)
+		resp, _, err := apiCall(client, req)
 		if err != nil || resp.StatusCode != http.StatusCreated {
 			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to upload %s", attempt, filePath)
 			time.Sleep(3 * time.Duration(attempt) * time.Second)
@@ -315,7 +317,7 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 		time.Sleep(3 * time.Duration(attempt) * time.Second)
 		continue
 	}
-	return fmt.Errorf("failed to upload %s after %d attempts", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), maxRetries)
+	return fmt.Errorf("failed to upload %s after %d attempts", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), timeoutConfig.MaxRetries)
 }
 
 // gpt-4o
@@ -422,41 +424,11 @@ func fetchAssets(client *http.Client, url string, parentPath, apiKey string) ([]
 	return allAssets, nil
 }
 
-func apiCallReadBody(client *http.Client, req *http.Request) (*http.Response, string, error) {
+func apiCall(client *http.Client, req *http.Request) (*http.Response, []byte, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, "", err
-	}
-	if *debug {
-		log.Info().Str("url", req.URL.String()).Msgf("get resp %d", resp.StatusCode)
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-
-		}
-	}(resp.Body)
-
-	if *debug {
-		log.Info().Str("url", req.URL.String()).Msgf("Read body...")
-	}
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", err
-	}
-	bodyString := string(bodyBytes)
-	if *debug {
-		log.Info().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
-	}
-	return resp, bodyString, nil
-}
-
-func apiCall(client *http.Client, req *http.Request) (*http.Response, error) {
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if *debug {
 		log.Info().Str("url", req.URL.String()).Msgf("get resp %d", resp.StatusCode)
@@ -465,13 +437,8 @@ func apiCall(client *http.Client, req *http.Request) (*http.Response, error) {
 
 	if *debug {
 		log.Info().Str("url", req.URL.String()).Msgf("Read body...")
-
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		bodyString := string(bodyBytes)
-		log.Info().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
 	}
-	return resp, nil
+	bodyBytes, err := io.ReadAll(resp.Body)
+
+	return resp, bodyBytes, nil
 }

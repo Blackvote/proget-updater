@@ -16,13 +16,11 @@ import (
 )
 
 var (
-	configFile  *string = new(string)
-	savePath    *string = new(string)
-	logFilePath *string = new(string)
-	debug       *bool   = new(bool)
+	configFile  = new(string)
+	savePath    = new(string)
+	logFilePath = new(string)
+	debug       = new(bool)
 )
-
-const maxRetries = 5
 
 func init() {
 	flag.StringVar(configFile, "c", "config.yml", "path to config file")

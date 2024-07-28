@@ -3,11 +3,11 @@
 ```yaml
 ## Пример заполнения файла config.yml
 SyncChain:
-   - source: # Описание Source PG/Feed, пакеты отсюда будут сравниваться с DEST PG/Feed (config.example.yml#6)
+   - source: # Описание Source PG/Feed, пакеты отсюда будут сравниваться с DEST PG/Feed
         url: "http://localhost" # URL адрес инстанса Source PG
         apiKey: "30a4c00a5ce95d038577fea1d671a567" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
         feed: "first-feed" # Имя Source Feed
-     destination: # Описание DEST PG/Feed, пакеты отсюда будут сравниваться с Source PG/Feed (config.example.yml#1)
+     destination: # Описание DEST PG/Feed, пакеты отсюда будут сравниваться с Source PG/Feed
         url: "http://localhost:8080" # URL адрес инстанса Dest PG
         apiKey: "51960d3631983c7f7bcf2e20ae1e60e" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
         feed: "second-feed" # Имя Dest Feed

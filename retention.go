@@ -15,7 +15,7 @@ func retention(ctx context.Context, config *Config, chain SyncChain, packages []
 
 	for _, pkg := range packages {
 		if len(pkg.Versions) <= config.Retention.VersionLimit {
-			log.Info().Str("url", chain.Destination.URL).Msgf("Version limit less than version, skip retention")
+			log.Info().Str("url", chain.Destination.URL).Msgf("package %s have %d version, skip retention", pkg.Name, len(pkg.Versions))
 			continue
 		}
 
@@ -30,10 +30,10 @@ func retention(ctx context.Context, config *Config, chain SyncChain, packages []
 						continue
 					}
 					req.Header.Set("X-ApiKey", chain.Destination.APIKey)
-					for attempt := 1; attempt <= maxRetries; attempt++ {
+					for attempt := 1; attempt <= config.Timeout.MaxRetries; attempt++ {
 						log.Info().Str("url", deleteURL).Msgf("Attempt %d to delete %s/%s:%s", attempt, pkg.Group, pkg.Name, version)
 
-						resp, err := apiCall(client, req)
+						resp, _, err := apiCall(client, req)
 						if err != nil || resp.StatusCode != http.StatusOK {
 							log.Error().Str("url", deleteURL).Msgf("Failed to delete %s/%s:%s. Error: %s", pkg.Group, pkg.Name, version, resp.Status)
 							continue
