@@ -16,10 +16,10 @@ import (
 )
 
 var (
-	configFile  = new(string)
-	savePath    = new(string)
-	logFilePath = new(string)
-	debug       = new(bool)
+	configFile,
+	savePath,
+	logFilePath *string
+	debug *bool
 )
 
 func init() {
