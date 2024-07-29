@@ -53,6 +53,12 @@ func main() {
 
 	for {
 		config, err := readConfig(*configFile)
+		if config.Retention.Enabled && !config.Retention.DryRun {
+			if config.ProceedPackageVersion > config.Retention.VersionLimit {
+				config.ProceedPackageVersion = config.Retention.VersionLimit
+			}
+		}
+
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to read config")
 		}
@@ -144,11 +150,7 @@ func run(parentCtx context.Context) error {
 				}
 			}
 
-			if config.ProceedPackageVersion > config.Retention.VersionLimit {
-				log.Info().Msgf("Will sync %d packages with %d versions", len(syncPackages), config.Retention.VersionLimit)
-			} else {
-				log.Info().Msgf("Will sync %d packages with %d versions", len(syncPackages), config.ProceedPackageVersion)
-			}
+			log.Info().Msgf("Will sync %d packages with %d versions", len(syncPackages), config.ProceedPackageVersion)
 
 			var packageList strings.Builder
 			for _, pkg := range syncPackages {
