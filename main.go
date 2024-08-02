@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/rs/zerolog/log"
-	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"os/signal"
@@ -16,10 +15,10 @@ import (
 )
 
 var (
-	configFile,
-	savePath,
-	logFilePath *string
-	debug *bool
+	configFile  = new(string)
+	savePath    = new(string)
+	logFilePath = new(string)
+	debug       = new(bool)
 )
 
 func init() {

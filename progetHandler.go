@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -172,7 +174,7 @@ func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPack
 	return packagesToSync, nil
 }
 
-func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncChain, pkg Package, version, savePath string) error {
+func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncChain, pkg Package, version string, savePath string) error {
 	var (
 		downloadURL,
 		uploadURL,
@@ -205,8 +207,98 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 	if err != nil {
 		return err
 	}
+	err = uploadFile(ctx, uploadURL, chain.Destination.APIKey, filePath, config.Timeout)
+	if err != nil {
+		return err
+	}
 
-	return uploadFile(ctx, uploadURL, chain.Destination.APIKey, filePath, config.Timeout)
+	return checkPackageHash(ctx, chain, pkg, version, config.Timeout)
+}
+
+func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version string, timeoutConfig TimeoutConfig) error {
+	var (
+		destHashURL,
+		srcHashURL,
+		deleteURL string
+	)
+	if *debug {
+		log.Info().Str("url", chain.Source.URL).Msgf("Switch to choose urls. case: %s", chain.Destination.Type)
+	}
+	switch chain.Type {
+	case "upack":
+		//DestHashURL = cleanURL(fmt.Sprintf("%s/api/packages/%s/versions?group=%s&name=%s&version=%s", chain.Destination.URL, chain.Destination.Feed, pkg.Group, pkg.Name, version))
+		//SrcHashURL = cleanURL(fmt.Sprintf("%s/api/packages/%s/versions?group=%s&name=%s&version=%s", chain.Source.URL, chain.Source.Feed, pkg.Group, pkg.Name, version))
+		return nil
+	case "nuget":
+		return nil
+	case "asset":
+		destHashURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/metadata/%s", chain.Destination.URL, chain.Destination.Feed, pkg.Name))
+		srcHashURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/metadata/%s", chain.Source.URL, chain.Source.Feed, pkg.Name))
+		deleteURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/delete/%s", chain.Source.URL, chain.Source.Feed, pkg.Name))
+	}
+
+	DestHash, err := getPackageHash(ctx, destHashURL, chain.Destination.APIKey, pkg.Group, pkg.Name, version, timeoutConfig)
+	if err != nil {
+		return err
+	}
+	SrcHash, err := getPackageHash(ctx, srcHashURL, chain.Source.APIKey, pkg.Group, pkg.Name, version, timeoutConfig)
+	if err != nil {
+		return err
+	}
+	if DestHash != SrcHash {
+		log.Warn().Msgf("File %s hash does not match, delete it", pkg.Name)
+		err := deleteFile(ctx, deleteURL, chain.Destination.APIKey, pkg.Group, pkg.Name, version, timeoutConfig)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func getPackageHash(ctx context.Context, url, apiKey, group, name, version string, timeoutConfig TimeoutConfig) (string, error) {
+	log.Info().Str("url", url).Msgf("Geting hash %s/%s:%s", name, group, version)
+
+	client := &http.Client{
+		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req.Header.Add("X-ApiKey", apiKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
+		log.Info().Str("url", url).Msgf("Attempt %d get hash %s/%s:%s", attempt, name, group, version)
+		resp, body, err := apiCall(client, req)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed get hash %s/%s:%s", attempt, name, group, version)
+			time.Sleep(5 * time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			var metadata map[string]interface{}
+			err = json.Unmarshal(body, &metadata)
+			if err != nil {
+				return "", fmt.Errorf("failed to unmarshal response body: %w", err)
+			}
+
+			pkgMd5, ok := metadata["md5"].(string)
+			if !ok {
+				fmt.Println("MD5 key not found or not a string")
+				return "", nil
+			}
+
+			log.Info().Str("url", url).Msgf("Success get hash %s/%s:%s", name, group, version)
+			return pkgMd5, nil
+		}
+
+		log.Warn().Str("url", url).Msgf("Failed %d attempt. Status Code: %d.", attempt, resp.StatusCode)
+		time.Sleep(5 * time.Duration(attempt) * time.Second)
+		continue
+	}
+	return "", fmt.Errorf("failed to get hash %s/%s:%s", name, group, version)
 }
 
 func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
@@ -259,7 +351,6 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			}
 
 			fileInfo, err := out.Write(body)
-
 			if err != nil {
 				log.Error().Err(err).Str("url", url).Msgf("Failed to copy response body")
 				time.Sleep(5 * time.Duration(attempt) * time.Second)
@@ -267,8 +358,9 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			}
 
 			out.Close()
+			md5Hash := calculateMD5FromBytes(body)
 			fileSizeMB := float64(fileInfo) / (1024 * 1024)
-			log.Info().Str("url", url).Msgf("Success download %s. File Size: %.2f MB", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB)
+			log.Info().Str("url", url).Msgf("Success download %s. File Size: %.2f MB. md5: %s", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB, md5Hash)
 			return nil
 		}
 		time.Sleep(5 * time.Duration(attempt) * time.Second)
@@ -310,7 +402,7 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 		}
 
 		if resp.StatusCode == http.StatusCreated {
-			log.Info().Str("url", url).Msgf("Success upload: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
+			log.Info().Str("url", url).Msgf("Success delete: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 			err = os.Remove(filePath)
 			return nil
 		}
@@ -319,7 +411,46 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 		time.Sleep(5 * time.Duration(attempt) * time.Second)
 		continue
 	}
-	return fmt.Errorf("failed to upload %s after %d attempts", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), timeoutConfig.MaxRetries)
+	return fmt.Errorf("failed to delete %s after %d attempts", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), timeoutConfig.MaxRetries)
+}
+
+func deleteFile(ctx context.Context, url, apiKey, group, name, version string, timeoutConfig TimeoutConfig) error {
+	log.Info().Str("url", url).Msgf("Delete package %s/%s:%s", group, name, version)
+
+	client := &http.Client{
+		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
+	}
+
+	if *debug {
+		log.Debug().Str("url", url).Msgf("create delete reqeest. File: %s/%s:%s", group, name, version)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	req.Header.Add("X-ApiKey", apiKey)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
+		log.Info().Str("url", url).Msgf("Attempt %d delete for %s/%s:%s", attempt, group, name, version)
+
+		resp, _, err := apiCall(client, req)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to delete %s/%s:%s", group, name, version)
+			time.Sleep(5 * time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			log.Info().Str("url", url).Msgf("Success delete: for file %s/%s:%s", group, name, version)
+			return nil
+		}
+
+		log.Warn().Str("url", url).Msgf("Failed %d attempt. Status Code: %d.", attempt, resp.StatusCode)
+		time.Sleep(5 * time.Duration(attempt) * time.Second)
+		continue
+	}
+	return fmt.Errorf("failed to delete %s/%s:%s after %d attempts", group, name, version, timeoutConfig.MaxRetries)
 }
 
 // gpt-4o
@@ -443,4 +574,10 @@ func apiCall(client *http.Client, req *http.Request) (*http.Response, []byte, er
 	bodyBytes, err := io.ReadAll(resp.Body)
 
 	return resp, bodyBytes, nil
+}
+
+func calculateMD5FromBytes(data []byte) string {
+	hasher := md5.New()
+	hasher.Write(data)
+	return hex.EncodeToString(hasher.Sum(nil))
 }
