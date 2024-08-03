@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
@@ -221,36 +221,37 @@ func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version
 		srcHashURL,
 		deleteURL string
 	)
-	if *debug {
-		log.Info().Str("url", chain.Source.URL).Msgf("Switch to choose urls. case: %s", chain.Destination.Type)
-	}
+
 	switch chain.Type {
 	case "upack":
-		//DestHashURL = cleanURL(fmt.Sprintf("%s/api/packages/%s/versions?group=%s&name=%s&version=%s", chain.Destination.URL, chain.Destination.Feed, pkg.Group, pkg.Name, version))
-		//SrcHashURL = cleanURL(fmt.Sprintf("%s/api/packages/%s/versions?group=%s&name=%s&version=%s", chain.Source.URL, chain.Source.Feed, pkg.Group, pkg.Name, version))
+		destHashURL = cleanURL(fmt.Sprintf("%s/%s/%s/versions?group=%s&name=%s&version=%s", chain.Destination.URL, chain.Destination.Type, chain.Destination.Feed, pkg.Group, pkg.Name, version))
+		srcHashURL = cleanURL(fmt.Sprintf("%s/%s/%s/versions?group=%s&name=%s&version=%s", chain.Source.URL, chain.Source.Type, chain.Source.Feed, pkg.Group, pkg.Name, version))
+		deleteURL = cleanURL(fmt.Sprintf("%s/%s/%s/delete/%s/%s/%s", chain.Destination.URL, chain.Destination.Type, chain.Destination.Feed, pkg.Group, pkg.Name, version))
 		return nil
 	case "nuget":
 		return nil
 	case "asset":
 		destHashURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/metadata/%s", chain.Destination.URL, chain.Destination.Feed, pkg.Name))
 		srcHashURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/metadata/%s", chain.Source.URL, chain.Source.Feed, pkg.Name))
-		deleteURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/delete/%s", chain.Source.URL, chain.Source.Feed, pkg.Name))
+		deleteURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/delete/%s", chain.Destination.URL, chain.Destination.Feed, pkg.Name))
+	}
+
+	SrcHash, err := getPackageHash(ctx, srcHashURL, chain.Source.APIKey, pkg.Group, pkg.Name, version, timeoutConfig)
+	if err != nil {
+		return err
 	}
 
 	DestHash, err := getPackageHash(ctx, destHashURL, chain.Destination.APIKey, pkg.Group, pkg.Name, version, timeoutConfig)
 	if err != nil {
 		return err
 	}
-	SrcHash, err := getPackageHash(ctx, srcHashURL, chain.Source.APIKey, pkg.Group, pkg.Name, version, timeoutConfig)
-	if err != nil {
-		return err
-	}
 	if DestHash != SrcHash {
 		log.Warn().Msgf("File %s hash does not match, delete it", pkg.Name)
-		err := deleteFile(ctx, deleteURL, chain.Destination.APIKey, pkg.Group, pkg.Name, version, timeoutConfig)
-		if err != nil {
-			return err
-		}
+		_ = deleteURL
+		//err := deleteFile(ctx, deleteURL, chain.Destination.APIKey, pkg.Group, pkg.Name, version, timeoutConfig)
+		//if err != nil {
+		//	return err
+		//}
 	}
 	return nil
 }
@@ -284,14 +285,14 @@ func getPackageHash(ctx context.Context, url, apiKey, group, name, version strin
 				return "", fmt.Errorf("failed to unmarshal response body: %w", err)
 			}
 
-			pkgMd5, ok := metadata["md5"].(string)
+			pkgSha1, ok := metadata["sha1"].(string)
 			if !ok {
-				fmt.Println("MD5 key not found or not a string")
+				fmt.Println("sha1 key not found or not a string")
 				return "", nil
 			}
 
 			log.Info().Str("url", url).Msgf("Success get hash %s/%s:%s", name, group, version)
-			return pkgMd5, nil
+			return pkgSha1, nil
 		}
 
 		log.Warn().Str("url", url).Msgf("Failed %d attempt. Status Code: %d.", attempt, resp.StatusCode)
@@ -358,9 +359,9 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 			}
 
 			out.Close()
-			md5Hash := calculateMD5FromBytes(body)
+			sha1Hash := calculateSHA1FromBytes(body)
 			fileSizeMB := float64(fileInfo) / (1024 * 1024)
-			log.Info().Str("url", url).Msgf("Success download %s. File Size: %.2f MB. md5: %s", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB, md5Hash)
+			log.Info().Str("url", url).Msgf("Success download %s. File Size: %.2f MB. sha1: %s", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB, sha1Hash)
 			return nil
 		}
 		time.Sleep(5 * time.Duration(attempt) * time.Second)
@@ -576,8 +577,8 @@ func apiCall(client *http.Client, req *http.Request) (*http.Response, []byte, er
 	return resp, bodyBytes, nil
 }
 
-func calculateMD5FromBytes(data []byte) string {
-	hasher := md5.New()
+func calculateSHA1FromBytes(data []byte) string {
+	hasher := sha1.New()
 	hasher.Write(data)
 	return hex.EncodeToString(hasher.Sum(nil))
 }
