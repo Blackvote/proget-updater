@@ -315,8 +315,14 @@ func downloadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConf
 
 }
 
-func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
-	log.Info().Str("url", url).Msgf("Upload package %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
+func uploadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
+	parsedURL, err := url.Parse(URL)
+	if err != nil {
+		return fmt.Errorf("failed to parse url: %s", err)
+	}
+	baseURL := parsedURL.Scheme + "://" + parsedURL.Host
+
+	log.Info().Str("url", baseURL).Msgf("Upload package %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 	file, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -328,10 +334,10 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 	}
 
 	if *debug {
-		log.Debug().Str("url", url).Msgf("create upload reqeest. File: %s", filePath)
+		log.Debug().Str("url", baseURL).Msgf("create upload reqeest. File: %s", filePath)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PUT", url, file)
+	req, err := http.NewRequestWithContext(ctx, "PUT", baseURL, file)
 	req.Header.Add("X-ApiKey", apiKey)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -353,7 +359,7 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 	}
 
 	if resp.StatusCode == http.StatusCreated {
-		log.Info().Str("url", url).Msgf("Success upload: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
+		log.Info().Str("url", baseURL).Msgf("Success upload: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 		err = os.Remove(filePath)
 		return nil
 	}
@@ -361,16 +367,22 @@ func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig
 	return err
 }
 
-func deleteFile(ctx context.Context, url, apiKey, group, name, version string, timeoutConfig TimeoutConfig) error {
+func deleteFile(ctx context.Context, URL, apiKey, group, name, version string, timeoutConfig TimeoutConfig) error {
+	parsedURL, err := url.Parse(URL)
+	if err != nil {
+		return fmt.Errorf("failed to parse url: %s", err)
+	}
+	baseURL := parsedURL.Scheme + "://" + parsedURL.Host
+
 	client := &http.Client{
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
 	if *debug {
-		log.Debug().Str("url", url).Msgf("create delete request. File: %s/%s:%s", group, name, version)
+		log.Debug().Str("url", baseURL).Msgf("create delete request. File: %s/%s:%s", group, name, version)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", baseURL, nil)
 	req.Header.Add("X-ApiKey", apiKey)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -391,7 +403,7 @@ func deleteFile(ctx context.Context, url, apiKey, group, name, version string, t
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		log.Info().Str("url", url).Msgf("Success delete: for file %s/%s:%s", group, name, version)
+		log.Info().Str("url", baseURL).Msgf("Success delete: for file %s/%s:%s", group, name, version)
 		return nil
 	}
 	return err
