@@ -39,14 +39,6 @@ func main() {
 		defer logFile.Close()
 	}
 
-	log.Info().Msgf("Clean %s", *savePath)
-	err := createDeleteDirectoryContents(*savePath)
-	if err != nil {
-		log.Error().Err(err).Msg("Error deleting directory contents")
-	} else {
-		log.Info().Msg("Directory contents deleted successfully")
-	}
-
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
@@ -56,6 +48,14 @@ func main() {
 			if config.ProceedPackageVersion > config.Retention.VersionLimit {
 				config.ProceedPackageVersion = config.Retention.VersionLimit
 			}
+		}
+
+		log.Info().Msgf("Clean %s", *savePath)
+		err = createDeleteDirectoryContents(*savePath)
+		if err != nil {
+			log.Error().Err(err).Msg("Error deleting directory contents")
+		} else {
+			log.Info().Msg("Directory contents deleted successfully")
 		}
 
 		if err != nil {
