@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,17 +41,17 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 	}
 
 	for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
-		log.Info().Str("url", url).Msgf("Attempt %d to get package list", attempt)
+		log.Info().Str("url", progetConfig.URL).Msgf("Attempt %d to get package list", attempt)
 		resp, body, err := apiCall(client, req)
 		bodyString := string(body)
 		if *debug {
-			log.Debug().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
+			log.Debug().Str("url", progetConfig.URL).Msgf("Body: %s", bodyString)
 		}
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if bodyString != "" {
-				log.Error().Err(err).Str("url", url).Msgf("Attempt %d failed to get package. Status: %s", attempt, resp.Status)
+				log.Error().Err(err).Str("url", progetConfig.URL).Msgf("Attempt %d failed to get package. Status: %s", attempt, resp.Status)
 			} else {
-				log.Error().Err(err).Str("url", url).Msgf("Attempt %d failed to get package.", attempt)
+				log.Error().Err(err).Str("url", progetConfig.URL).Msgf("Attempt %d failed to get package.", attempt)
 			}
 			time.Sleep(5 * time.Duration(attempt) * time.Second)
 			continue
@@ -61,21 +62,21 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 			case "upack":
 				err = json.NewDecoder(strings.NewReader(bodyString)).Decode(&packages)
 				if err != nil {
-					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
+					log.Error().Err(err).Str("url", progetConfig.URL).Msgf("error decoding package list")
 					time.Sleep(5 * time.Duration(attempt) * time.Second)
 					continue
 				}
 			case "nuget":
 				packages, err = decodeXML(bodyString)
 				if err != nil {
-					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
+					log.Error().Err(err).Str("url", progetConfig.URL).Msgf("error decoding package list")
 					time.Sleep(5 * time.Duration(attempt) * time.Second)
 					continue
 				}
 			case "asset":
 				err = json.NewDecoder(strings.NewReader(bodyString)).Decode(&assets)
 				if err != nil {
-					log.Error().Err(err).Str("url", url).Msgf("error decoding package list")
+					log.Error().Err(err).Str("url", progetConfig.URL).Msgf("error decoding package list")
 					time.Sleep(5 * time.Duration(attempt) * time.Second)
 					continue
 				}
@@ -102,7 +103,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 
 		}
 
-		log.Info().Str("url", url).Msgf("Package count: %d", len(packages))
+		log.Info().Str("url", progetConfig.URL).Msgf("Package count: %d", len(packages))
 		return packages, nil
 	}
 	return nil, fmt.Errorf("failed to get package after %d attempts", timeoutConfig.MaxRetries)
@@ -174,6 +175,17 @@ func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPack
 }
 
 func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncChain, pkg Package, version string, savePath string) error {
+	srcParsedURL, err := url.Parse(chain.Source.URL)
+	if err != nil {
+		return fmt.Errorf("failed to parse url: %s", err)
+	}
+	srcParseURL := srcParsedURL.Scheme + "://" + srcParsedURL.Host
+
+	dstParsedURL, err := url.Parse(chain.Destination.URL)
+	if err != nil {
+		return fmt.Errorf("failed to parse url: %s", err)
+	}
+	dstParseURL := dstParsedURL.Scheme + "://" + dstParsedURL.Host
 	var (
 		downloadURL,
 		uploadURL,
@@ -197,13 +209,13 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 		filePath = filepath.Join(savePath, pkg.Name)
 	}
 
-	err := os.MkdirAll(savePath, os.ModePerm)
+	err = os.MkdirAll(savePath, os.ModePerm)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to create dir %s", savePath)
 	}
 
 	for attempt := 1; attempt <= config.Timeout.MaxRetries; attempt++ {
-		log.Info().Str("url", downloadURL).Msgf("Attempt %d download file %s", attempt, filePath)
+		log.Info().Str("url", srcParseURL).Msgf("Attempt %d download file %s", attempt, filePath)
 		err = downloadFile(ctx, downloadURL, chain.Source.APIKey, filePath, config.Timeout)
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to download %s (attempt: %d)", savePath, attempt)
@@ -214,7 +226,7 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 	}
 
 	for attempt := 1; attempt <= config.Timeout.MaxRetries; attempt++ {
-		log.Info().Str("url", downloadURL).Msgf("Attempt %d upload file %s", attempt, filePath)
+		log.Info().Str("url", dstParseURL).Msgf("Attempt %d upload file %s", attempt, filePath)
 		err = uploadFile(ctx, uploadURL, chain.Destination.APIKey, filePath, config.Timeout)
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to upload %s (attempt: %d)", savePath, attempt)
@@ -227,10 +239,16 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 	return checkPackageHash(ctx, chain, pkg, version, config.Timeout)
 }
 
-func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
-	log.Info().Str("url", url).Msgf("Download package %s", filePath)
+func downloadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
+	parsedURL, err := url.Parse(URL)
+	if err != nil {
+		return fmt.Errorf("failed to parse url: %s", err)
+	}
+	baseURL := parsedURL.Scheme + "://" + parsedURL.Host
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	log.Info().Str("url", baseURL).Msgf("Download package %s", filePath)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", baseURL, nil)
 	req.Header.Set("X-ApiKey", apiKey)
 	if err != nil {
 		return err
@@ -265,7 +283,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 		}
 
 		if *debug {
-			log.Debug().Str("url", req.URL.String()).Msgf("creating empty file %s", filePath)
+			log.Debug().Str("url", baseURL).Msgf("creating empty file %s", filePath)
 		}
 
 		out, err := os.Create(filePath)
@@ -275,7 +293,7 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 		}
 
 		if *debug {
-			log.Debug().Str("url", req.URL.String()).Msgf("Copy bytes in file %s", filePath)
+			log.Debug().Str("url", baseURL).Msgf("Copy bytes in file %s", filePath)
 		}
 
 		hasher := sha1.New()
@@ -283,14 +301,14 @@ func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConf
 
 		fileInfo, err := io.Copy(multiWriter, resp.Body)
 		if err != nil {
-			log.Error().Err(err).Str("url", url).Msgf("Failed to copy response body")
+			log.Error().Err(err).Str("url", baseURL).Msgf("Failed to copy response body")
 			return err
 		}
 
 		out.Close()
 		sha1Hash := fmt.Sprintf("%x", hasher.Sum(nil))
 		fileSizeMB := float64(fileInfo) / (1024 * 1024)
-		log.Info().Str("url", url).Msgf("Success download %s. File Size: %.2f MB. sha1: %s", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB, sha1Hash)
+		log.Info().Str("url", baseURL).Msgf("Success download %s. File Size: %.2f MB. sha1: %s", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB, sha1Hash)
 		return nil
 	}
 	return err
@@ -427,24 +445,30 @@ func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version
 	return nil
 }
 
-func getPackageHash(ctx context.Context, url, apiKey, group, name, version string, timeoutConfig TimeoutConfig) (string, error) {
-	log.Info().Str("url", url).Msgf("Geting hash %s/%s:%s", name, group, version)
+func getPackageHash(ctx context.Context, URL, apiKey, group, name, version string, timeoutConfig TimeoutConfig) (string, error) {
+	parsedURL, err := url.Parse(URL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse url: %s", err)
+	}
+	baseURL := parsedURL.Scheme + "://" + parsedURL.Host
+
+	log.Info().Str("url", baseURL).Msgf("Geting hash %s/%s:%s", name, group, version)
 
 	client := &http.Client{
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", baseURL, nil)
 	req.Header.Add("X-ApiKey", apiKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
-		log.Info().Str("url", url).Msgf("Attempt %d get hash %s/%s:%s", attempt, name, group, version)
+		log.Info().Str("url", baseURL).Msgf("Attempt %d get hash %s/%s:%s", attempt, name, group, version)
 		resp, body, err := apiCall(client, req)
 		if err != nil || resp.StatusCode != http.StatusOK {
-			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed get hash %s/%s:%s", attempt, name, group, version)
+			log.Error().Err(err).Str("url", baseURL).Msgf("Attempt %d. Failed get hash %s/%s:%s", attempt, name, group, version)
 			time.Sleep(5 * time.Duration(attempt) * time.Second)
 			continue
 		}
@@ -462,15 +486,15 @@ func getPackageHash(ctx context.Context, url, apiKey, group, name, version strin
 				return "", nil
 			}
 
-			log.Info().Str("url", url).Msgf("Success get hash %s/%s:%s. sha1: %s", name, group, version, pkgSha1)
+			log.Info().Str("url", baseURL).Msgf("Success get hash %s/%s:%s. sha1: %s", group, name, version, pkgSha1)
 			return pkgSha1, nil
 		}
 
-		log.Warn().Str("url", url).Msgf("Failed %d attempt. Status Code: %d.", attempt, resp.StatusCode)
+		log.Warn().Str("url", baseURL).Msgf("Failed %d attempt. Status Code: %d", attempt, resp.StatusCode)
 		time.Sleep(5 * time.Duration(attempt) * time.Second)
 		continue
 	}
-	return "", fmt.Errorf("failed to get hash %s/%s:%s", name, group, version)
+	return "", fmt.Errorf("failed to get hash %s/%s:%s. Status: %d", name, group, version)
 }
 
 // gpt-4o
