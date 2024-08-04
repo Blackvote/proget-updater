@@ -349,7 +349,7 @@ func deleteFile(ctx context.Context, url, apiKey, group, name, version string, t
 	}
 
 	if *debug {
-		log.Debug().Str("url", url).Msgf("create delete reqeest. File: %s/%s:%s", group, name, version)
+		log.Debug().Str("url", url).Msgf("create delete request. File: %s/%s:%s", group, name, version)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
@@ -423,7 +423,7 @@ func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version
 			}
 		}
 	}
-	log.Warn().Msgf("File %s hash match", pkg.Name)
+	log.Warn().Msgf("%s/%s:%s hash match", pkg.Group, pkg.Name, version)
 	return nil
 }
 
