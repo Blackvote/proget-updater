@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -203,16 +202,181 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 		log.Error().Err(err).Msgf("Failed to create dir %s", savePath)
 	}
 
-	err = downloadFile(ctx, downloadURL, chain.Source.APIKey, filePath, config.Timeout)
-	if err != nil {
-		return err
+	for attempt := 1; attempt <= config.Timeout.MaxRetries; attempt++ {
+		log.Info().Str("url", downloadURL).Msgf("Attempt %d download file %s", attempt, filePath)
+		err = downloadFile(ctx, downloadURL, chain.Source.APIKey, filePath, config.Timeout)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to download %s (attempt: %d)", savePath, attempt)
+			time.Sleep(5 * time.Duration(attempt) * time.Second)
+		} else {
+			break
+		}
 	}
-	err = uploadFile(ctx, uploadURL, chain.Destination.APIKey, filePath, config.Timeout)
+
+	for attempt := 1; attempt <= config.Timeout.MaxRetries; attempt++ {
+		log.Info().Str("url", downloadURL).Msgf("Attempt %d upload file %s", attempt, filePath)
+		err = uploadFile(ctx, uploadURL, chain.Destination.APIKey, filePath, config.Timeout)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to upload %s (attempt: %d)", savePath, attempt)
+			time.Sleep(5 * time.Duration(attempt) * time.Second)
+		} else {
+			break
+		}
+	}
+
+	return checkPackageHash(ctx, chain, pkg, version, config.Timeout)
+}
+
+func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
+	log.Info().Str("url", url).Msgf("Download package %s", filePath)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req.Header.Set("X-ApiKey", apiKey)
 	if err != nil {
 		return err
 	}
 
-	return checkPackageHash(ctx, chain, pkg, version, config.Timeout)
+	client := &http.Client{
+		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if *debug {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to read response body")
+		}
+		bodyString := string(body)
+		log.Debug().Msgf("Response body: %s", bodyString)
+	}
+	defer resp.Body.Close()
+
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download %s. Status: %d", filePath, resp.StatusCode)
+	}
+
+	if resp.StatusCode == http.StatusOK {
+
+		dir := filepath.Dir(filePath)
+		err := os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			fmt.Println("Error creating directories:", err)
+			return err
+		}
+
+		if *debug {
+			log.Debug().Str("url", req.URL.String()).Msgf("creating empty file %s", filePath)
+		}
+
+		out, err := os.Create(filePath)
+		if err != nil {
+			fmt.Println("Error creating file:", err)
+			return err
+		}
+
+		if *debug {
+			log.Debug().Str("url", req.URL.String()).Msgf("Copy bytes in file %s", filePath)
+		}
+
+		hasher := sha1.New()
+		multiWriter := io.MultiWriter(out, hasher)
+
+		fileInfo, err := io.Copy(multiWriter, resp.Body)
+		if err != nil {
+			log.Error().Err(err).Str("url", url).Msgf("Failed to copy response body")
+			return err
+		}
+
+		out.Close()
+		sha1Hash := fmt.Sprintf("%x", hasher.Sum(nil))
+		fileSizeMB := float64(fileInfo) / (1024 * 1024)
+		log.Info().Str("url", url).Msgf("Success download %s. File Size: %.2f MB. sha1: %s", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB, sha1Hash)
+		return nil
+	}
+	return err
+
+}
+
+func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
+	log.Info().Str("url", url).Msgf("Upload package %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	client := &http.Client{
+		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
+	}
+
+	if *debug {
+		log.Debug().Str("url", url).Msgf("create upload reqeest. File: %s", filePath)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, file)
+	req.Header.Add("X-ApiKey", apiKey)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if *debug {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to read response body")
+		}
+		bodyString := string(body)
+		log.Debug().Msgf("Response body: %s", bodyString)
+	}
+	defer resp.Body.Close()
+
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("failed to upload %s. Status: %d", filePath, resp.StatusCode)
+	}
+
+	if resp.StatusCode == http.StatusCreated {
+		log.Info().Str("url", url).Msgf("Success upload: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
+		err = os.Remove(filePath)
+		return nil
+	}
+
+	return err
+}
+
+func deleteFile(ctx context.Context, url, apiKey, group, name, version string, timeoutConfig TimeoutConfig) error {
+	client := &http.Client{
+		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
+	}
+
+	if *debug {
+		log.Debug().Str("url", url).Msgf("create delete reqeest. File: %s/%s:%s", group, name, version)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	req.Header.Add("X-ApiKey", apiKey)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if *debug {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to read response body")
+		}
+		bodyString := string(body)
+		log.Debug().Msgf("Response body: %s", bodyString)
+	}
+	defer resp.Body.Close()
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to delete %s/%s:%s", group, name, version)
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		log.Info().Str("url", url).Msgf("Success delete: for file %s/%s:%s", group, name, version)
+		return nil
+	}
+	return err
 }
 
 func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version string, timeoutConfig TimeoutConfig) error {
@@ -227,8 +391,9 @@ func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version
 		destHashURL = cleanURL(fmt.Sprintf("%s/%s/%s/versions?group=%s&name=%s&version=%s", chain.Destination.URL, chain.Destination.Type, chain.Destination.Feed, pkg.Group, pkg.Name, version))
 		srcHashURL = cleanURL(fmt.Sprintf("%s/%s/%s/versions?group=%s&name=%s&version=%s", chain.Source.URL, chain.Source.Type, chain.Source.Feed, pkg.Group, pkg.Name, version))
 		deleteURL = cleanURL(fmt.Sprintf("%s/%s/%s/delete/%s/%s/%s", chain.Destination.URL, chain.Destination.Type, chain.Destination.Feed, pkg.Group, pkg.Name, version))
-		return nil
 	case "nuget":
+		// have no api to get hash
+		log.Warn().Msgf("have no api to check nuget hash")
 		return nil
 	case "asset":
 		destHashURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/metadata/%s", chain.Destination.URL, chain.Destination.Feed, pkg.Name))
@@ -246,13 +411,19 @@ func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version
 		return err
 	}
 	if DestHash != SrcHash {
-		log.Warn().Msgf("File %s hash does not match, delete it", pkg.Name)
-		_ = deleteURL
-		//err := deleteFile(ctx, deleteURL, chain.Destination.APIKey, pkg.Group, pkg.Name, version, timeoutConfig)
-		//if err != nil {
-		//	return err
-		//}
+		log.Warn().Msgf("File %s/%s:%s hash does not match, delete it", pkg.Group, pkg.Name, version)
+		for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
+			log.Warn().Msgf("Attempt %d to delete %s/%s:%s", attempt, pkg.Group, pkg.Name, version)
+			err := deleteFile(ctx, deleteURL, chain.Destination.APIKey, pkg.Group, pkg.Name, version, timeoutConfig)
+			if err != nil {
+				log.Error().Err(err).Msgf("Failed to delete %s (attempt: %d)", *savePath, attempt)
+				time.Sleep(5 * time.Duration(attempt) * time.Second)
+			} else {
+				break
+			}
+		}
 	}
+	log.Warn().Msgf("File %s hash match", pkg.Name)
 	return nil
 }
 
@@ -291,7 +462,7 @@ func getPackageHash(ctx context.Context, url, apiKey, group, name, version strin
 				return "", nil
 			}
 
-			log.Info().Str("url", url).Msgf("Success get hash %s/%s:%s", name, group, version)
+			log.Info().Str("url", url).Msgf("Success get hash %s/%s:%s. sha1: %s", name, group, version, pkgSha1)
 			return pkgSha1, nil
 		}
 
@@ -300,158 +471,6 @@ func getPackageHash(ctx context.Context, url, apiKey, group, name, version strin
 		continue
 	}
 	return "", fmt.Errorf("failed to get hash %s/%s:%s", name, group, version)
-}
-
-func downloadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
-	log.Info().Str("url", url).Msgf("Download package %s", filePath)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	req.Header.Set("X-ApiKey", apiKey)
-	if err != nil {
-		return err
-	}
-
-	client := &http.Client{
-		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
-	}
-
-	for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
-		log.Info().Str("url", url).Msgf("Attempt download %d file %s", attempt, filePath)
-
-		resp, body, err := apiCall(client, req)
-		bodyString := string(body)
-		if *debug {
-			log.Info().Str("url", req.URL.String()).Msgf("Body: %s", bodyString)
-		}
-		if err != nil || resp.StatusCode != http.StatusOK {
-			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to download %s. Status: %s", attempt, filePath, resp.Status)
-			time.Sleep(5 * time.Duration(attempt) * time.Second)
-			continue
-		}
-
-		if resp.StatusCode == http.StatusOK {
-			dir := filepath.Dir(filePath)
-			err := os.MkdirAll(dir, os.ModePerm)
-			if err != nil {
-				fmt.Println("Error creating directories:", err)
-			}
-
-			if *debug {
-				log.Debug().Str("url", req.URL.String()).Msgf("creating empty file %s", filePath)
-			}
-
-			out, err := os.Create(filePath)
-			if err != nil {
-				fmt.Println("Error creating file:", err)
-				time.Sleep(5 * time.Duration(attempt) * time.Second)
-				continue
-			}
-
-			if *debug {
-				log.Debug().Str("url", req.URL.String()).Msgf("Copy bytes in file %s", filePath)
-			}
-
-			fileInfo, err := out.Write(body)
-			if err != nil {
-				log.Error().Err(err).Str("url", url).Msgf("Failed to copy response body")
-				time.Sleep(5 * time.Duration(attempt) * time.Second)
-				continue
-			}
-
-			out.Close()
-			sha1Hash := calculateSHA1FromBytes(body)
-			fileSizeMB := float64(fileInfo) / (1024 * 1024)
-			log.Info().Str("url", url).Msgf("Success download %s. File Size: %.2f MB. sha1: %s", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB, sha1Hash)
-			return nil
-		}
-		time.Sleep(5 * time.Duration(attempt) * time.Second)
-		continue
-	}
-	return nil
-}
-
-func uploadFile(ctx context.Context, url, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
-	log.Info().Str("url", url).Msgf("Upload package %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
-	file, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	client := &http.Client{
-		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
-	}
-
-	if *debug {
-		log.Debug().Str("url", url).Msgf("create upload reqeest. File: %s", filePath)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "PUT", url, file)
-	req.Header.Add("X-ApiKey", apiKey)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
-		log.Info().Str("url", url).Msgf("Attempt %d upload for file %s", attempt, strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
-
-		resp, _, err := apiCall(client, req)
-		if err != nil || resp.StatusCode != http.StatusCreated {
-			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to upload %s", attempt, filePath)
-			time.Sleep(5 * time.Duration(attempt) * time.Second)
-			continue
-		}
-
-		if resp.StatusCode == http.StatusCreated {
-			log.Info().Str("url", url).Msgf("Success delete: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
-			err = os.Remove(filePath)
-			return nil
-		}
-
-		log.Warn().Str("url", url).Msgf("Failed %d attempt. Status Code: %d.", attempt, resp.StatusCode)
-		time.Sleep(5 * time.Duration(attempt) * time.Second)
-		continue
-	}
-	return fmt.Errorf("failed to delete %s after %d attempts", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"), timeoutConfig.MaxRetries)
-}
-
-func deleteFile(ctx context.Context, url, apiKey, group, name, version string, timeoutConfig TimeoutConfig) error {
-	log.Info().Str("url", url).Msgf("Delete package %s/%s:%s", group, name, version)
-
-	client := &http.Client{
-		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
-	}
-
-	if *debug {
-		log.Debug().Str("url", url).Msgf("create delete reqeest. File: %s/%s:%s", group, name, version)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
-	req.Header.Add("X-ApiKey", apiKey)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
-		log.Info().Str("url", url).Msgf("Attempt %d delete for %s/%s:%s", attempt, group, name, version)
-
-		resp, _, err := apiCall(client, req)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			log.Error().Err(err).Str("url", url).Msgf("Attempt %d. Failed to delete %s/%s:%s", group, name, version)
-			time.Sleep(5 * time.Duration(attempt) * time.Second)
-			continue
-		}
-
-		if resp.StatusCode == http.StatusOK {
-			log.Info().Str("url", url).Msgf("Success delete: for file %s/%s:%s", group, name, version)
-			return nil
-		}
-
-		log.Warn().Str("url", url).Msgf("Failed %d attempt. Status Code: %d.", attempt, resp.StatusCode)
-		time.Sleep(5 * time.Duration(attempt) * time.Second)
-		continue
-	}
-	return fmt.Errorf("failed to delete %s/%s:%s after %d attempts", group, name, version, timeoutConfig.MaxRetries)
 }
 
 // gpt-4o
@@ -575,10 +594,4 @@ func apiCall(client *http.Client, req *http.Request) (*http.Response, []byte, er
 	bodyBytes, err := io.ReadAll(resp.Body)
 
 	return resp, bodyBytes, nil
-}
-
-func calculateSHA1FromBytes(data []byte) string {
-	hasher := sha1.New()
-	hasher.Write(data)
-	return hex.EncodeToString(hasher.Sum(nil))
 }
