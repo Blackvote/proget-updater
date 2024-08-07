@@ -218,7 +218,7 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 		log.Info().Str("url", srcParseURL).Msgf("Attempt %d download file %s", attempt, filePath)
 		err = downloadFile(ctx, downloadURL, chain.Source.APIKey, filePath, config.Timeout)
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to download %s (attempt: %d)", savePath, attempt)
+			log.Error().Err(err).Msgf("Failed to download %s (attempt: %d)", filePath, attempt)
 			time.Sleep(5 * time.Duration(attempt) * time.Second)
 		} else {
 			break
@@ -229,7 +229,7 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 		log.Info().Str("url", dstParseURL).Msgf("Attempt %d upload file %s", attempt, filePath)
 		err = uploadFile(ctx, uploadURL, chain.Destination.APIKey, filePath, config.Timeout)
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to upload %s (attempt: %d)", savePath, attempt)
+			log.Error().Err(err).Msgf("Failed to upload %s (attempt: %d)", filePath, attempt)
 			time.Sleep(5 * time.Duration(attempt) * time.Second)
 		} else {
 			break
@@ -338,7 +338,7 @@ func uploadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConfig
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "PUT", baseURL, file)
-	req.Header.Add("X-ApiKey", apiKey)
+	//req.Header.Add("X-ApiKey", apiKey)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -470,7 +470,7 @@ func getPackageHash(ctx context.Context, URL, apiKey, group, name, version strin
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", baseURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", URL, nil)
 	req.Header.Add("X-ApiKey", apiKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
