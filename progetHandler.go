@@ -248,7 +248,7 @@ func downloadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConf
 
 	log.Info().Str("url", baseURL).Msgf("Download package %s", filePath)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", baseURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", URL, nil)
 	req.Header.Set("X-ApiKey", apiKey)
 	if err != nil {
 		return err
@@ -337,8 +337,8 @@ func uploadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConfig
 		log.Debug().Str("url", baseURL).Msgf("create upload reqeest. File: %s", filePath)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PUT", baseURL, file)
-	//req.Header.Add("X-ApiKey", apiKey)
+	req, err := http.NewRequestWithContext(ctx, "PUT", URL, file)
+	req.Header.Add("X-ApiKey", apiKey)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
