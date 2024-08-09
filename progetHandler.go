@@ -44,9 +44,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 		log.Info().Str("url", progetConfig.URL).Msgf("Attempt %d to get package list", attempt)
 		resp, body, err := apiCall(client, req)
 		bodyString := string(body)
-		if *debug {
-			log.Debug().Str("url", progetConfig.URL).Msgf("Body: %s", bodyString)
-		}
+		log.Debug().Str("url", progetConfig.URL).Msgf("Body: %s", bodyString)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if bodyString != "" {
 				log.Error().Err(err).Str("url", progetConfig.URL).Msgf("Attempt %d failed to get package. Status: %s", attempt, resp.Status)
@@ -191,9 +189,9 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 		uploadURL,
 		filePath string
 	)
-	if *debug {
-		log.Info().Str("url", chain.Source.URL).Msgf("Switch to choose urls. case: %s", chain.Destination.Type)
-	}
+
+	log.Debug().Str("url", chain.Source.URL).Msgf("Switch to choose urls. case: %s", chain.Destination.Type)
+
 	switch chain.Type {
 	case "upack":
 		downloadURL = cleanURL(fmt.Sprintf("%s/%s/%s/download/%s/%s/%s", chain.Source.URL, chain.Type, chain.Source.Feed, pkg.Group, pkg.Name, version))
@@ -275,23 +273,19 @@ func downloadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConf
 		dir := filepath.Dir(filePath)
 		err := os.MkdirAll(dir, os.ModePerm)
 		if err != nil {
-			fmt.Println("Error creating directories:", err)
+			log.Error().Err(err).Msg("Error creating directories:")
 			return err
 		}
 
-		if *debug {
-			log.Debug().Str("url", baseURL).Msgf("creating empty file %s", filePath)
-		}
+		log.Debug().Str("url", baseURL).Msgf("creating empty file %s", filePath)
 
 		out, err := os.Create(filePath)
 		if err != nil {
-			fmt.Println("Error creating file:", err)
+			log.Error().Err(err).Msg("Error creating file:")
 			return err
 		}
 
-		if *debug {
-			log.Debug().Str("url", baseURL).Msgf("Copy bytes in file %s", filePath)
-		}
+		log.Debug().Str("url", baseURL).Msgf("Copy bytes in file %s", filePath)
 
 		hasher := sha1.New()
 		multiWriter := io.MultiWriter(out, hasher)
@@ -332,9 +326,7 @@ func uploadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConfig
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
-	if *debug {
-		log.Debug().Str("url", baseURL).Msgf("create upload reqeest. File: %s", filepath.Base(filePath))
-	}
+	log.Debug().Str("url", baseURL).Msgf("create upload reqeest. File: %s", filepath.Base(filePath))
 
 	req, err := http.NewRequestWithContext(ctx, "PUT", URL, file)
 	req.Header.Add("X-ApiKey", apiKey)
@@ -343,14 +335,12 @@ func uploadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConfig
 	}
 
 	resp, err := client.Do(req)
-	if *debug {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Error().Err(err).Msgf("Failed to read response body")
-		}
-		bodyString := string(body)
-		log.Debug().Msgf("Response body: %s", bodyString)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Error().Err(err).Msgf("Failed to read response body")
 	}
+	bodyString := string(body)
+	log.Debug().Msgf("Response body: %s", bodyString)
 	defer resp.Body.Close()
 
 	if err != nil || resp.StatusCode != http.StatusCreated {
@@ -377,9 +367,7 @@ func deleteFile(ctx context.Context, URL, apiKey, group, name, version string, t
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
-	if *debug {
-		log.Debug().Str("url", baseURL).Msgf("create delete request. File: %s/%s:%s", group, name, version)
-	}
+	log.Debug().Str("url", baseURL).Msgf("create delete request. File: %s/%s:%s", group, name, version)
 
 	req, err := http.NewRequestWithContext(ctx, "DELETE", baseURL, nil)
 	req.Header.Add("X-ApiKey", apiKey)
@@ -388,14 +376,13 @@ func deleteFile(ctx context.Context, URL, apiKey, group, name, version string, t
 	}
 
 	resp, err := client.Do(req)
-	if *debug {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Error().Err(err).Msgf("Failed to read response body")
-		}
-		bodyString := string(body)
-		log.Debug().Msgf("Response body: %s", bodyString)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Error().Err(err).Msgf("Failed to read response body")
 	}
+	bodyString := string(body)
+	log.Debug().Msgf("Response body: %s", bodyString)
+
 	defer resp.Body.Close()
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to delete %s/%s:%s", group, name, version)
@@ -493,7 +480,7 @@ func getPackageHash(ctx context.Context, URL, apiKey, group, name, version strin
 
 			pkgSha1, ok := metadata["sha1"].(string)
 			if !ok {
-				fmt.Println("sha1 key not found or not a string")
+				log.Error().Msgf("sha1 key not found or not a string")
 				return "", nil
 			}
 
@@ -618,14 +605,10 @@ func apiCall(client *http.Client, req *http.Request) (*http.Response, []byte, er
 	if err != nil {
 		return nil, nil, err
 	}
-	if *debug {
-		log.Info().Str("url", req.URL.String()).Msgf("get resp %d", resp.StatusCode)
-	}
+	log.Debug().Str("url", req.URL.String()).Msgf("get resp %d", resp.StatusCode)
 	defer resp.Body.Close()
 
-	if *debug {
-		log.Info().Str("url", req.URL.String()).Msgf("Read body...")
-	}
+	log.Debug().Str("url", req.URL.String()).Msgf("Read body...")
 	bodyBytes, err := io.ReadAll(resp.Body)
 
 	return resp, bodyBytes, nil

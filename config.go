@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v2"
 	"io"
@@ -79,20 +81,33 @@ func readConfig(configFile string) (*Config, error) {
 		config.SyncChain[i].Source.Type = config.SyncChain[i].Type
 		config.SyncChain[i].Destination.Type = config.SyncChain[i].Type
 	}
-
 	return &config, nil
 }
 
 func setupLogging(logFilePath string) (*os.File, error) {
-	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		return nil, err
+	var logger zerolog.Logger
+	var logFile *os.File
+
+	if logFilePath != "" {
+		logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			return nil, err
+		}
+
+		multiWriter := io.MultiWriter(os.Stdout, logFile)
+		logger = log.Output(multiWriter).With().Str("app", "Updater").Logger()
+	} else {
+		Writer := io.Writer(os.Stdout)
+		logger = log.Output(Writer).With().Str("app", "Updater").Logger()
 	}
 
-	multiWriter := io.MultiWriter(os.Stdout, logFile)
-	log.Logger = log.Output(multiWriter).With().
-		Str("app", "Updater").
-		Logger()
+	if *debug {
+		logger = logger.Level(zerolog.DebugLevel)
+	} else {
+		logger = logger.Level(zerolog.InfoLevel)
+	}
+
+	log.Logger = logger
 	return logFile, nil
 }
 
@@ -100,7 +115,7 @@ func createDeleteDirectoryContents(dir string) error {
 
 	_, err := os.Stat(dir)
 	if os.IsNotExist(err) {
-		err := os.Mkdir(dir, 0755)
+		err := os.Mkdir(dir, 0777)
 		if err != nil {
 			return err
 		}
@@ -136,4 +151,52 @@ func cleanURL(url string) string {
 	}
 	parts[1] = strings.ReplaceAll(parts[1], "//", "/")
 	return parts[0] + "://" + parts[1]
+}
+
+func validateConfig(config *Config) error {
+	var errorMessages []string
+
+	if config.ProceedPackageLimit <= 0 {
+		errorMessages = append(errorMessages, "invalid ProceedPackageLimit: must be greater than 0")
+	}
+	if config.ProceedPackageVersion <= 0 {
+		errorMessages = append(errorMessages, "invalid ProceedPackageVersion: must be greater than 0")
+	}
+
+	if config.Timeout.SyncTimeout <= 0 {
+		errorMessages = append(errorMessages, "invalid SyncTimeout: must be greater than 0")
+	}
+	if config.Timeout.IterationTimeout <= 0 {
+		errorMessages = append(errorMessages, "invalid IterationTimeout: must be greater than 0")
+	}
+	if config.Timeout.WebRequestTimeout <= 0 {
+		errorMessages = append(errorMessages, "invalid WebRequestTimeout: must be greater than 0")
+	}
+	if config.Timeout.MaxRetries <= 0 {
+		errorMessages = append(errorMessages, "invalid MaxRetries: must be greater than 0")
+	}
+
+	for i, chain := range config.SyncChain {
+		if chain.Source.URL == "" {
+			errorMessages = append(errorMessages, fmt.Sprintf("source URL cannot be empty for chain %d", i+1))
+		}
+		if chain.Destination.URL == "" {
+			errorMessages = append(errorMessages, fmt.Sprintf("destination URL cannot be empty for chain %d", i+1))
+		}
+		if chain.Source.APIKey == "" {
+			errorMessages = append(errorMessages, fmt.Sprintf("source API key cannot be empty for chain %d", i+1))
+		}
+		if chain.Destination.APIKey == "" {
+			errorMessages = append(errorMessages, fmt.Sprintf("destination API key cannot be empty for chain %d", i+1))
+		}
+	}
+
+	if config.Retention.Enabled && config.Retention.VersionLimit <= 0 {
+		errorMessages = append(errorMessages, "invalid VersionLimit for retention: must be greater than 0")
+	}
+
+	if len(errorMessages) > 0 {
+		return fmt.Errorf("configuration validation errors: \n%s", strings.Join(errorMessages, "\n"))
+	}
+	return nil
 }

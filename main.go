@@ -30,19 +30,12 @@ func init() {
 }
 
 func main() {
-	if *logFilePath != "" {
-		logFile, err := setupLogging(*logFilePath)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to open log file")
-			return
-		}
-		defer func(logFile *os.File) {
-			err := logFile.Close()
-			if err != nil {
-
-			}
-		}(logFile)
+	logFile, err := setupLogging(*logFilePath)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to open log file")
+		return
 	}
+	defer logFile.Close()
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -66,20 +59,16 @@ func main() {
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to read config")
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout.SyncTimeout)*time.Second)
 
 		go func() {
 			<-stop
 			log.Fatal().Msg("Received stop signal.")
-			cancel()
 		}()
 
-		err = run(ctx)
+		err = run()
 		if err != nil {
 			log.Error().Err(err).Msg("Error syncing")
 		}
-
-		cancel()
 
 		select {
 		case <-stop:
@@ -91,11 +80,7 @@ func main() {
 	}
 }
 
-func run(parentCtx context.Context) error {
-	mutex := sync.Mutex{}
-	mutex.Lock()
-	defer mutex.Unlock()
-
+func run() error {
 	log.Info().Msg("Application start")
 
 	config, err := readConfig(*configFile)
@@ -103,29 +88,37 @@ func run(parentCtx context.Context) error {
 		log.Fatal().Err(err).Msg("Failed to read config")
 	}
 
+	err = validateConfig(config)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Invalid configuration")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout.SyncTimeout)*time.Second)
+	defer cancel()
+
 	for _, chain := range config.SyncChain {
 		_, err := url.ParseRequestURI(chain.Source.URL)
 		if err != nil {
-			fmt.Println("Invalid source URI:", err)
+			log.Error().Err(err).Msg("Invalid source URI")
 		}
 
 		_, err = url.ParseRequestURI(chain.Destination.URL)
 		if err != nil {
-			fmt.Println("Invalid dest URI:", err)
+			log.Error().Err(err).Msg("Invalid dest URI")
 		}
 
 		select {
-		case <-parentCtx.Done():
+		case <-ctx.Done():
 			log.Warn().Msgf("Timeout or cancel signal received, exiting run. Timeout: %d seconds", config.Timeout.SyncTimeout)
-			return parentCtx.Err()
+			return ctx.Err()
 		default:
-			sourcePackages, err := getPackages(parentCtx, chain.Source, config.Timeout)
+			sourcePackages, err := getPackages(ctx, chain.Source, config.Timeout)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to get packages from source")
 				continue
 			}
 
-			destPackages, err := getPackages(parentCtx, chain.Destination, config.Timeout)
+			destPackages, err := getPackages(ctx, chain.Destination, config.Timeout)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to get packages from destination")
 				continue
@@ -137,9 +130,7 @@ func run(parentCtx context.Context) error {
 				continue
 			}
 
-			if *debug {
-				log.Debug().Msgf("syncPackage = %d", len(syncPackages))
-			}
+			log.Debug().Msgf("syncPackage = %d", len(syncPackages))
 
 			if len(syncPackages) > config.ProceedPackageLimit {
 				syncPackages = syncPackages[:config.ProceedPackageLimit]
@@ -171,7 +162,7 @@ func run(parentCtx context.Context) error {
 					wg.Add(1)
 					go func(pkg Package, version string) {
 						defer wg.Done()
-						err := downloadAndUploadPackage(parentCtx, config, chain, pkg, version, *savePath)
+						err := downloadAndUploadPackage(ctx, config, chain, pkg, version, *savePath)
 						if err != nil {
 							errCh <- fmt.Errorf("failed to sync package %s/%s:%s, error: %w", pkg.Group, pkg.Name, version, err)
 						}
@@ -189,12 +180,12 @@ func run(parentCtx context.Context) error {
 
 			if config.Retention.Enabled && chain.Type != "assets" {
 				log.Info().Msgf("Start retention")
-				destPackages, err = getPackages(parentCtx, chain.Destination, config.Timeout)
+				destPackages, err = getPackages(ctx, chain.Destination, config.Timeout)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to get packages from destination")
 					continue
 				}
-				err = retention(parentCtx, config, chain, destPackages)
+				err = retention(ctx, config, chain, destPackages)
 				if err != nil {
 					log.Error().Err(err).Msg("Retention failed")
 					continue
@@ -204,9 +195,9 @@ func run(parentCtx context.Context) error {
 	}
 	log.Info().Msgf("Pause %d seconds", config.Timeout.IterationTimeout)
 	select {
-	case <-parentCtx.Done():
+	case <-ctx.Done():
 		log.Warn().Msgf("Timeout or cancel signal received, exiting run. Timeout: %d seconds", config.Timeout.SyncTimeout)
-		return parentCtx.Err()
+		return ctx.Err()
 	case <-time.After((time.Duration(config.Timeout.IterationTimeout) / 2) * time.Second):
 		return nil
 	}
