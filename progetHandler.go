@@ -215,27 +215,32 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 	}
 
 	for attempt := 1; attempt <= config.Timeout.MaxRetries; attempt++ {
-		log.Info().Str("url", srcParseURL).Msgf("Attempt %d download file %s", attempt, filePath)
+		log.Info().Str("url", srcParseURL).Msgf("Attempt %d download package %s", attempt, pkg.Name)
 		err = downloadFile(ctx, downloadURL, chain.Source.APIKey, filePath, config.Timeout)
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to download %s (attempt: %d)", filePath, attempt)
+			log.Error().Err(err).Msgf("Attempt: %d failed", attempt)
 			time.Sleep(5 * time.Duration(attempt) * time.Second)
 		} else {
 			break
+		}
+		if attempt == config.Timeout.MaxRetries {
+			return fmt.Errorf("failed to download %s", filepath.Base(filePath))
 		}
 	}
 
 	for attempt := 1; attempt <= config.Timeout.MaxRetries; attempt++ {
-		log.Info().Str("url", dstParseURL).Msgf("Attempt %d upload file %s", attempt, filePath)
+		log.Info().Str("url", dstParseURL).Msgf("Attempt %d upload file %s", attempt, pkg.Name)
 		err = uploadFile(ctx, uploadURL, chain.Destination.APIKey, filePath, config.Timeout)
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to upload %s (attempt: %d)", filePath, attempt)
+			log.Error().Err(err).Msgf("Attempt: %d failed", attempt)
 			time.Sleep(5 * time.Duration(attempt) * time.Second)
 		} else {
 			break
 		}
+		if attempt == config.Timeout.MaxRetries {
+			return fmt.Errorf("failed to upload %s", filepath.Base(filePath))
+		}
 	}
-
 	return checkPackageHash(ctx, chain, pkg, version, config.Timeout)
 }
 
@@ -246,7 +251,7 @@ func downloadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConf
 	}
 	baseURL := parsedURL.Scheme + "://" + parsedURL.Host
 
-	log.Info().Str("url", baseURL).Msgf("Download package %s", filePath)
+	log.Info().Str("url", baseURL).Msgf("Download file %s", filepath.Base(filePath))
 
 	req, err := http.NewRequestWithContext(ctx, "GET", URL, nil)
 	req.Header.Set("X-ApiKey", apiKey)
@@ -270,7 +275,7 @@ func downloadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConf
 	defer resp.Body.Close()
 
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download %s. Status: %d", filePath, resp.StatusCode)
+		return fmt.Errorf("failed to download %s. Status: %d", filepath.Base(filePath), resp.StatusCode)
 	}
 
 	if resp.StatusCode == http.StatusOK {
@@ -334,7 +339,7 @@ func uploadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConfig
 	}
 
 	if *debug {
-		log.Debug().Str("url", baseURL).Msgf("create upload reqeest. File: %s", filePath)
+		log.Debug().Str("url", baseURL).Msgf("create upload reqeest. File: %s", filepath.Base(filePath))
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "PUT", URL, file)
@@ -355,7 +360,7 @@ func uploadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConfig
 	defer resp.Body.Close()
 
 	if err != nil || resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("failed to upload %s. Status: %d", filePath, resp.StatusCode)
+		return fmt.Errorf("failed to upload %s. Status: %d", filepath.Base(filePath), resp.StatusCode)
 	}
 
 	if resp.StatusCode == http.StatusCreated {

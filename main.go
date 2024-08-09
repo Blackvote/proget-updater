@@ -36,7 +36,12 @@ func main() {
 			log.Error().Err(err).Msg("Failed to open log file")
 			return
 		}
-		defer logFile.Close()
+		defer func(logFile *os.File) {
+			err := logFile.Close()
+			if err != nil {
+
+			}
+		}(logFile)
 	}
 
 	stop := make(chan os.Signal, 1)
@@ -144,8 +149,8 @@ func run(parentCtx context.Context) error {
 			}
 
 			for i := range syncPackages {
-				if len(sourcePackages[i].Versions) > 0 {
-					sourcePackages[i].Versions = []string{sourcePackages[i].Versions[0]}
+				if len(syncPackages[i].Versions) > config.ProceedPackageVersion {
+					syncPackages[i].Versions = syncPackages[i].Versions[:config.ProceedPackageVersion]
 				}
 			}
 
