@@ -5,11 +5,11 @@
 SyncChain:
    - source: # Описание Source PG/Feed, пакеты отсюда будут сравниваться с DEST PG/Feed
         url: "http://localhost" # URL адрес инстанса Source PG
-        apiKey: "30a4c00a5ce95d038577fea1d671a567" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
+        apiKey: "30a4c00a5ce95d038577" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
         feed: "first-feed" # Имя Source Feed
      destination: # Описание DEST PG/Feed, пакеты отсюда будут сравниваться с Source PG/Feed
         url: "http://localhost:8080" # URL адрес инстанса Dest PG
-        apiKey: "51960d3631983c7f7bcf2e20ae1e60e" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
+        apiKey: "51960d3631983c7f7bcf2" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
         feed: "second-feed" # Имя Dest Feed
      type: "upack" # тип синхронизируемого фида. Доступные "nuget", "upack", "assets".
 
@@ -36,12 +36,14 @@ SyncChain:
 
 # Ниже конфиг один на все цепочки
 proceedPackageLimit: 10 # Кол-во обрабатываемых параллельно пакетов. Снижение этого параметра снижает общую нагрузку на ресурсы хоста
-proceedPackageVersion: 1 # Кол-во версий для обрабатываемых пакетов.
+proceedPackageVersion: 1 # Кол-во версий пакета обрабатываемых параллельно. Снижение этого параметра снижает общую нагрузку на ресурсы хоста
+
 
 timeout: # Конфигурация таймаутов
    webRequestTimeout: 15 # Таймаут обращений к апи
    iterationTimeout: 20 # Пауза между синхронизациями
    syncTimeout: 120 # Общий таймаут для операции синхронизации
+   MaxRetries: 5 # Кол-во повторов запросов вернувших не ожидаемый status-code
 
 retention: # Конфигурация отчистки версий старше указанного лимита
    enabled: false # Включение
