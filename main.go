@@ -173,7 +173,7 @@ func run(parentCtx context.Context) error {
 						defer wg.Done()
 						err := downloadAndUploadPackage(parentCtx, config, chain, pkg, version, *savePath)
 						if err != nil {
-							errCh <- fmt.Errorf("failed to sync package %s:%s, error: %w", pkg.Name, version, err)
+							errCh <- fmt.Errorf("failed to sync package %s/%s:%s, error: %w", pkg.Group, pkg.Name, version, err)
 						}
 					}(pkg, version)
 				}

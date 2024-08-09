@@ -264,14 +264,6 @@ func downloadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConf
 	}
 
 	resp, err := client.Do(req)
-	if *debug {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Error().Err(err).Msgf("Failed to read response body")
-		}
-		bodyString := string(body)
-		log.Debug().Msgf("Response body: %s", bodyString)
-	}
 	defer resp.Body.Close()
 
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -313,11 +305,13 @@ func downloadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConf
 		out.Close()
 		sha1Hash := fmt.Sprintf("%x", hasher.Sum(nil))
 		fileSizeMB := float64(fileInfo) / (1024 * 1024)
+		if fileSizeMB <= 0.2 {
+			return fmt.Errorf("file size is too small: %.2f MB. It is may be an error", fileSizeMB)
+		}
 		log.Info().Str("url", baseURL).Msgf("Success download %s. File Size: %.2f MB. sha1: %s", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB, sha1Hash)
 		return nil
 	}
 	return err
-
 }
 
 func uploadFile(ctx context.Context, URL, apiKey, filePath string, timeoutConfig TimeoutConfig) error {
