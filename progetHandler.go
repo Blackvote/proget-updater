@@ -272,44 +272,33 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download %s. Status: %d", filepath.Base(filePath), resp.StatusCode)
 	}
-
 	if resp.StatusCode == http.StatusOK {
-
 		dir := filepath.Dir(filePath)
 		err := os.MkdirAll(dir, os.ModePerm)
 		if err != nil {
 			log.Error().Err(err).Msg("Error creating directories:")
 			return err
 		}
-
 		log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("creating empty file %s", filePath)
 
-		fileInfo, sha1Hash, _ := func() (int64, string, error) {
-			out, err := os.Create(filePath)
-			defer func(out *os.File) {
-				err := out.Close()
-				if err != nil {
-					return
-				}
-			}(out)
+		out, err := os.Create(filePath)
+		defer out.Close()
 
-			if err != nil {
-				log.Error().Err(err).Msg("Error creating file:")
-				return 0, "", err
-			}
+		if err != nil {
+			log.Error().Err(err).Msg("Error creating file:")
+			return err
+		}
 
-			log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Copy bytes in file %s", filePath)
+		log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Copy bytes in file %s", filePath)
 
-			hasher := sha1.New()
-			multiWriter := io.MultiWriter(out, hasher)
-			sha1Hash := fmt.Sprintf("%x", hasher.Sum(nil))
-			fileInfo, err := io.Copy(multiWriter, resp.Body)
-			if err != nil {
-				log.Error().Err(err).Str("url", baseURL).Str("feed", chain.Feed).Msgf("Failed to copy response body")
-				return 0, "", err
-			}
-			return fileInfo, sha1Hash, nil
-		}()
+		hasher := sha1.New()
+		multiWriter := io.MultiWriter(out, hasher)
+		sha1Hash := fmt.Sprintf("%x", hasher.Sum(nil))
+		fileInfo, err := io.Copy(multiWriter, resp.Body)
+		if err != nil {
+			log.Error().Err(err).Str("url", baseURL).Str("feed", chain.Feed).Msgf("Failed to copy response body")
+			return err
+		}
 
 		fileSizeMB := float64(fileInfo) / (1024 * 1024)
 		if fileSizeMB <= 0.2 {
@@ -333,12 +322,7 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 	if err != nil {
 		return err
 	}
-	defer func(file *os.File) {
-		err := file.Close()
-		if err != nil {
-			log.Error().Err(err).Msgf("Failed to close file")
-		}
-	}(file)
+	defer file.Close()
 
 	client := &http.Client{
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
@@ -362,7 +346,7 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to close response body")
+			log.Error().Err(err).Msgf("Failed to close body")
 		}
 	}(resp.Body)
 
