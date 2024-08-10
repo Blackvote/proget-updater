@@ -284,28 +284,33 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 
 		log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("creating empty file %s", filePath)
 
-		out, err := os.Create(filePath)
-		if err != nil {
-			log.Error().Err(err).Msg("Error creating file:")
-			return err
-		}
+		fileInfo, sha1Hash, _ := func() (int64, string, error) {
+			out, err := os.Create(filePath)
+			defer func(out *os.File) {
+				err := out.Close()
+				if err != nil {
+					return
+				}
+			}(out)
 
-		log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Copy bytes in file %s", filePath)
+			if err != nil {
+				log.Error().Err(err).Msg("Error creating file:")
+				return 0, "", err
+			}
 
-		hasher := sha1.New()
-		multiWriter := io.MultiWriter(out, hasher)
+			log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Copy bytes in file %s", filePath)
 
-		fileInfo, err := io.Copy(multiWriter, resp.Body)
-		if err != nil {
-			log.Error().Err(err).Str("url", baseURL).Str("feed", chain.Feed).Msgf("Failed to copy response body")
-			return err
-		}
+			hasher := sha1.New()
+			multiWriter := io.MultiWriter(out, hasher)
+			sha1Hash := fmt.Sprintf("%x", hasher.Sum(nil))
+			fileInfo, err := io.Copy(multiWriter, resp.Body)
+			if err != nil {
+				log.Error().Err(err).Str("url", baseURL).Str("feed", chain.Feed).Msgf("Failed to copy response body")
+				return 0, "", err
+			}
+			return fileInfo, sha1Hash, nil
+		}()
 
-		err = out.Close()
-		if err != nil {
-			return err
-		}
-		sha1Hash := fmt.Sprintf("%x", hasher.Sum(nil))
 		fileSizeMB := float64(fileInfo) / (1024 * 1024)
 		if fileSizeMB <= 0.2 {
 			return fmt.Errorf("file size is too small: %.2f MB. It is may be an error", fileSizeMB)
