@@ -264,14 +264,6 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 	}
 
 	resp, err := client.Do(req)
-	if *debug {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Error().Err(err).Msgf("Failed to read response body")
-		}
-		bodyString := string(body)
-		log.Debug().Msgf("Response body: %s", bodyString)
-	}
 	defer resp.Body.Close()
 
 	if err != nil || resp.StatusCode != http.StatusOK {
