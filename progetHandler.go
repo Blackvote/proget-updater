@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -262,52 +264,70 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 	}
 
 	resp, err := client.Do(req)
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
+	if *debug {
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to close response body")
+			log.Error().Err(err).Msgf("Failed to read response body")
 		}
-	}(resp.Body)
+		bodyString := string(body)
+		log.Debug().Msgf("Response body: %s", bodyString)
+	}
+	defer resp.Body.Close()
 
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to download %s. Status: %d", filepath.Base(filePath), resp.StatusCode)
 	}
+
+	contentType := resp.Header.Get("Content-Type")
+	contentLength := resp.Header.Get("Content-Length")
+
+	if !strings.Contains(contentType, "application") {
+		return fmt.Errorf("invalid content type: %s", contentType)
+	}
+	if contentLength == "" || contentLength == "0" {
+		return fmt.Errorf("invalid content length: %s", contentLength)
+	}
+
 	if resp.StatusCode == http.StatusOK {
+
 		dir := filepath.Dir(filePath)
 		err := os.MkdirAll(dir, os.ModePerm)
 		if err != nil {
-			log.Error().Err(err).Msg("Error creating directories:")
+			fmt.Println("Error creating directories:", err)
 			return err
 		}
-		log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("creating empty file %s", filePath)
+
+		if *debug {
+			log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("creating empty file %s", filePath)
+		}
 
 		out, err := os.Create(filePath)
-		defer out.Close()
-
 		if err != nil {
-			log.Error().Err(err).Msg("Error creating file:")
+			fmt.Println("Error creating file:", err)
 			return err
 		}
 
-		log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Copy bytes in file %s", filePath)
+		if *debug {
+			log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Copy bytes in file %s", filePath)
+		}
 
 		hasher := sha1.New()
 		multiWriter := io.MultiWriter(out, hasher)
-		sha1Hash := fmt.Sprintf("%x", hasher.Sum(nil))
+
 		fileInfo, err := io.Copy(multiWriter, resp.Body)
 		if err != nil {
-			log.Error().Err(err).Str("url", baseURL).Str("feed", chain.Feed).Msgf("Failed to copy response body")
+			log.Error().Err(err).Str("url", baseURL).Msgf("Failed to copy response body")
 			return err
 		}
 
+		out.Close()
+		sha1Hash := fmt.Sprintf("%x", hasher.Sum(nil))
 		fileSizeMB := float64(fileInfo) / (1024 * 1024)
-		if fileSizeMB <= 0.2 {
-			return fmt.Errorf("file size is too small: %.2f MB. It is may be an error", fileSizeMB)
-		}
 		log.Info().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Success download %s. File Size: %.2f MB. sha1: %s", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB, sha1Hash)
 		return nil
 	}
 	return err
+
 }
 
 func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, timeoutConfig TimeoutConfig) error {
@@ -330,7 +350,32 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 
 	log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("create upload reqeest. File: %s", filepath.Base(filePath))
 
-	req, err := http.NewRequestWithContext(ctx, "PUT", URL, file)
+	var req *http.Request
+	if chain.Type == "nuget" {
+		var requestBody bytes.Buffer
+		writer := multipart.NewWriter(&requestBody)
+
+		part, err := writer.CreateFormFile("package", filepath.Base(filePath))
+		if err != nil {
+			return fmt.Errorf("failed to create form file: %w", err)
+		}
+
+		_, err = io.Copy(part, file)
+		if err != nil {
+			return fmt.Errorf("failed to copy file: %w", err)
+		}
+
+		err = writer.Close()
+		if err != nil {
+			return fmt.Errorf("failed to close writer: %w", err)
+		}
+
+		req, err = http.NewRequestWithContext(ctx, "PUT", URL, &requestBody)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+	} else {
+		req, err = http.NewRequestWithContext(ctx, "PUT", URL, file)
+	}
+
 	req.Header.Add("X-ApiKey", chain.APIKey)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
