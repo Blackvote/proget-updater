@@ -46,13 +46,9 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 		log.Info().Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msgf("Attempt %d to get package list", attempt)
 		resp, body, err := apiCall(client, req)
 		bodyString := string(body)
-		log.Debug().Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msgf("Body: %s", bodyString)
+		log.Debug().Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msgf("Get packaget responce body: %s", bodyString)
 		if err != nil || resp.StatusCode != http.StatusOK {
-			if bodyString != "" {
-				log.Error().Err(err).Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msgf("Attempt %d failed to get package. Status: %s", attempt, resp.Status)
-			} else {
-				log.Error().Err(err).Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msgf("Attempt %d failed to get package.", attempt)
-			}
+			log.Error().Err(err).Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msgf("Attempt %d failed to get package. Status: %s", attempt, resp.Status)
 			time.Sleep(5 * time.Duration(attempt) * time.Second)
 			continue
 		}
@@ -379,7 +375,7 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 		log.Error().Err(err).Msgf("Failed to read response body")
 	}
 	bodyString := string(body)
-	log.Debug().Msgf("Response body: %s", bodyString)
+	log.Debug().Msgf("Upload response body: %s", bodyString)
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
@@ -425,7 +421,7 @@ func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version str
 		log.Error().Err(err).Msgf("Failed to read response body")
 	}
 	bodyString := string(body)
-	log.Debug().Msgf("Response body: %s", bodyString)
+	log.Debug().Msgf("Delete response body: %s", bodyString)
 
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
