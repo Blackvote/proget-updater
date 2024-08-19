@@ -178,17 +178,15 @@ func run() error {
 				return err
 			}
 
-			if config.Retention.Enabled && chain.Type != "assets" {
+			if config.Retention.Enabled && chain.Type != "asset" {
 				log.Info().Msgf("Start retention")
 				destPackages, err = getPackages(ctx, chain.Destination, config.Timeout)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to get packages from destination")
-					continue
 				}
 				err = retention(ctx, config, chain, destPackages)
 				if err != nil {
 					log.Error().Err(err).Msg("Retention failed")
-					continue
 				}
 			}
 		}

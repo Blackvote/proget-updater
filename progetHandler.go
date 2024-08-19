@@ -247,7 +247,7 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 	}
 	baseURL := parsedURL.Scheme + "://" + parsedURL.Host
 
-	log.Info().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Download file %s", filepath.Base(filePath))
+	log.Info().Str("url", baseURL).Str("feed", chain.Feed).Str("Action", "Download").Msgf("Download file %s", filepath.Base(filePath))
 
 	req, err := http.NewRequestWithContext(ctx, "GET", URL, nil)
 	req.Header.Set("X-ApiKey", chain.APIKey)
@@ -286,7 +286,7 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 		}
 
 		if *debug {
-			log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("creating empty file %s", filePath)
+			log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Str("Action", "Download").Msgf("Creating empty file %s", filePath)
 		}
 
 		out, err := os.Create(filePath)
@@ -296,7 +296,7 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 		}
 
 		if *debug {
-			log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Copy bytes in file %s", filePath)
+			log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Str("Action", "Download").Msgf("Copy bytes in file %s", filePath)
 		}
 
 		hasher := sha1.New()
@@ -304,7 +304,7 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 
 		fileInfo, err := io.Copy(multiWriter, resp.Body)
 		if err != nil {
-			log.Error().Err(err).Str("url", baseURL).Msgf("Failed to copy response body")
+			log.Error().Err(err).Str("url", baseURL).Str("Action", "Download").Msgf("Failed to copy response body")
 			return err
 		}
 
@@ -325,7 +325,7 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 	}
 	baseURL := parsedURL.Scheme + "://" + parsedURL.Host
 
-	log.Info().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Upload package %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
+	log.Info().Str("url", baseURL).Str("feed", chain.Feed).Str("Action", "Upload").Msgf("Upload package %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 	file, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -336,7 +336,7 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
-	log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Msgf("create upload reqeest. File: %s", filepath.Base(filePath))
+	log.Debug().Str("url", baseURL).Str("feed", chain.Feed).Str("Action", "Upload").Msgf("create upload reqeest. File: %s", filepath.Base(filePath))
 
 	var req *http.Request
 	if chain.Type == "nuget" {
@@ -372,14 +372,14 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 	resp, err := client.Do(req)
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Error().Err(err).Msgf("Failed to read response body")
+		log.Error().Str("Action", "Upload").Err(err).Msgf("Failed to read response body")
 	}
 	bodyString := string(body)
-	log.Debug().Msgf("Upload response body: %s", bodyString)
+	log.Debug().Str("Action", "Upload").Msgf("Upload response body: %s", bodyString)
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to close body")
+			log.Error().Str("Action", "Upload").Err(err).Msgf("Failed to close body")
 		}
 	}(resp.Body)
 
@@ -388,7 +388,7 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 	}
 
 	if resp.StatusCode == http.StatusCreated {
-		log.Info().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Success upload: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
+		log.Info().Str("url", baseURL).Str("feed", chain.Feed).Str("Action", "Upload").Msgf("Success upload: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 		err = os.Remove(filePath)
 		return nil
 	}
@@ -396,10 +396,10 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 	return err
 }
 
-func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version string, timeoutConfig TimeoutConfig) error {
+func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version string, timeoutConfig TimeoutConfig) (error, int) {
 	parsedURL, err := url.Parse(URL)
 	if err != nil {
-		return fmt.Errorf("failed to parse url: %s", err)
+		return fmt.Errorf("failed to parse url: %s", err), 0
 	}
 	baseURL := parsedURL.Scheme + "://" + parsedURL.Host
 
@@ -407,12 +407,12 @@ func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version str
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
-	log.Debug().Str("url", baseURL).Str("feed", feed).Msgf("create delete request. File: %s/%s:%s", group, name, version)
+	log.Debug().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("Create delete request. File: %s/%s:%s", group, name, version)
 
-	req, err := http.NewRequestWithContext(ctx, "DELETE", baseURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "POST", URL, nil)
 	req.Header.Add("X-ApiKey", apikey)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err), 0
 	}
 
 	resp, err := client.Do(req)
@@ -421,7 +421,6 @@ func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version str
 		log.Error().Err(err).Msgf("Failed to read response body")
 	}
 	bodyString := string(body)
-	log.Debug().Msgf("Delete response body: %s", bodyString)
 
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
@@ -429,15 +428,22 @@ func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version str
 			log.Error().Err(err).Msgf("Failed to close response body")
 		}
 	}(resp.Body)
+
+	if resp.StatusCode == 429 {
+		log.Info().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("Delete reqest rate limit was exeed")
+		return nil, resp.StatusCode
+	}
+
 	if err != nil || resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to delete %s/%s:%s", group, name, version)
+		log.Debug().Str("Action", "Delete").Msgf("Delete response body: %s", bodyString)
+		return fmt.Errorf("failed to delete %s/%s:%s", group, name, version), resp.StatusCode
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		log.Info().Str("url", baseURL).Str("feed", feed).Msgf("Success delete: for file %s/%s:%s", group, name, version)
-		return nil
+		log.Info().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("Success delete: for file %s/%s:%s", group, name, version)
+		return nil, resp.StatusCode
 	}
-	return err
+	return err, resp.StatusCode
 }
 
 func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version string, timeoutConfig TimeoutConfig) error {
@@ -451,10 +457,11 @@ func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version
 	case "upack":
 		destHashURL = cleanURL(fmt.Sprintf("%s/%s/%s/versions?group=%s&name=%s&version=%s", chain.Destination.URL, chain.Destination.Type, chain.Destination.Feed, pkg.Group, pkg.Name, version))
 		srcHashURL = cleanURL(fmt.Sprintf("%s/%s/%s/versions?group=%s&name=%s&version=%s", chain.Source.URL, chain.Source.Type, chain.Source.Feed, pkg.Group, pkg.Name, version))
-		deleteURL = cleanURL(fmt.Sprintf("%s/%s/%s/delete/%s/%s/%s", chain.Destination.URL, chain.Destination.Type, chain.Destination.Feed, pkg.Group, pkg.Name, version))
+		deleteURL = cleanURL(fmt.Sprintf("%s/api/packages/%s/delete?group=%s&name=%s&version=%s", chain.Destination.URL, chain.Destination.Feed, pkg.Group, pkg.Name, version))
 	case "nuget":
 		// have no api to get hash
 		log.Warn().Msgf("have no api to check nuget hash")
+		//deleteURL = cleanURL(fmt.Sprintf("%s/api/packages/%s/delete?name=%s&version=%s", chain.Destination.URL, chain.Destination.Feed, pkg.Name, version))
 		return nil
 	case "asset":
 		destHashURL = cleanURL(fmt.Sprintf("%s/endpoints/%s/metadata/%s", chain.Destination.URL, chain.Destination.Feed, pkg.Name))
@@ -475,7 +482,7 @@ func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version
 		log.Warn().Msgf("File %s/%s:%s hash does not match, delete it", pkg.Group, pkg.Name, version)
 		for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
 			log.Warn().Msgf("Attempt %d to delete %s/%s:%s", attempt, pkg.Group, pkg.Name, version)
-			err := deleteFile(ctx, deleteURL, chain.Destination.APIKey, chain.Destination.Feed, pkg.Group, pkg.Name, version, timeoutConfig)
+			err, _ := deleteFile(ctx, deleteURL, chain.Destination.APIKey, chain.Destination.Feed, pkg.Group, pkg.Name, version, timeoutConfig)
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to delete %s (attempt: %d)", *savePath, attempt)
 				time.Sleep(5 * time.Duration(attempt) * time.Second)
