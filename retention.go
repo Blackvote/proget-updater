@@ -32,8 +32,7 @@ func retention(ctx context.Context, config *Config, chain SyncChain, packages []
 					if err != nil {
 						log.Error().Err(err).Msgf("Failed to delete %s (attempt: %d)", *savePath, attempt)
 						time.Sleep(5 * time.Duration(attempt) * time.Second)
-					} else if statusCode == 429 {
-						log.Info().Str("feed", chain.Destination.Feed).Str("Action", "Retention").Msgf("Delete reqest rate limit was exeed. Skip retention")
+					} else if statusCode == 429 || statusCode == 403 {
 						return nil
 					} else {
 						break

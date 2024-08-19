@@ -429,8 +429,13 @@ func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version str
 		}
 	}(resp.Body)
 
+	if resp.StatusCode == 403 {
+		log.Info().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("403 add delete permission to apiKey")
+		return nil, resp.StatusCode
+	}
+
 	if resp.StatusCode == 429 {
-		log.Info().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("Delete reqest rate limit was exeed")
+		log.Info().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("Delete reqest rate limit was exeed. Skip retention")
 		return nil, resp.StatusCode
 	}
 
