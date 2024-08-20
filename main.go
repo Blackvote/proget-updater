@@ -67,7 +67,7 @@ func main() {
 
 		err = run()
 		if err != nil {
-			log.Error().Err(err).Msg("Error syncing")
+			log.Error().Err(err).Msgf("Error syncing. Pause %d seconds", config.Timeout.IterationTimeout)
 		}
 
 		select {
@@ -174,12 +174,11 @@ func run() error {
 			close(errCh)
 
 			for err := range errCh {
-				log.Error().Err(err).Msg("Error occurred during package sync")
 				return err
 			}
 
 			if config.Retention.Enabled && chain.Type != "asset" {
-				log.Info().Msgf("Start retention")
+				log.Info().Str("feed", chain.Destination.Feed).Msgf("Start retention")
 				destPackages, err = getPackages(ctx, chain.Destination, config.Timeout)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to get packages from destination")

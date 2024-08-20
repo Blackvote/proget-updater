@@ -211,10 +211,14 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 	}
 
 	for attempt := 1; attempt <= config.Timeout.MaxRetries; attempt++ {
-		log.Info().Str("url", srcParseURL).Str("feed", chain.Source.Feed).Msgf("Attempt %d download package %s", attempt, pkg.Name)
-		err = downloadFile(ctx, downloadURL, filePath, chain.Source, config.Timeout)
+		log.Info().Str("url", srcParseURL).Str("feed", chain.Source.Feed).Str("Action", "Download").Msgf("Attempt %d download package %s", attempt, pkg.Name)
+		err, statusCode := downloadFile(ctx, downloadURL, filePath, chain.Source, config.Timeout)
+		switch statusCode {
+		case 401:
+			return fmt.Errorf("failed to download %s, check apiKey permisson (Download)", filepath.Base(filePath))
+		}
 		if err != nil {
-			log.Error().Err(err).Msgf("Attempt: %d failed", attempt)
+			log.Error().Err(err).Str("url", srcParseURL).Str("feed", chain.Source.Feed).Str("Action", "Download").Msgf("Attempt: %d failed", attempt)
 			time.Sleep(5 * time.Duration(attempt) * time.Second)
 		} else {
 			break
@@ -225,10 +229,14 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 	}
 
 	for attempt := 1; attempt <= config.Timeout.MaxRetries; attempt++ {
-		log.Info().Str("url", dstParseURL).Str("feed", chain.Destination.Feed).Msgf("Attempt %d upload file %s", attempt, pkg.Name)
-		err = uploadFile(ctx, uploadURL, filePath, chain.Destination, config.Timeout)
+		log.Info().Str("url", dstParseURL).Str("feed", chain.Destination.Feed).Str("Action", "Upload").Msgf("Attempt %d upload file %s", attempt, pkg.Name)
+		err, statusCode := uploadFile(ctx, uploadURL, filePath, chain.Destination, config.Timeout)
+		switch statusCode {
+		case 401:
+			return fmt.Errorf("failed to upload %s, check apiKey permisson (add)", filepath.Base(filePath))
+		}
 		if err != nil {
-			log.Error().Err(err).Msgf("Attempt: %d failed", attempt)
+			log.Error().Str("url", srcParseURL).Str("feed", chain.Destination.Feed).Str("Action", "Upload").Err(err).Msgf("Attempt: %d failed", attempt)
 			time.Sleep(5 * time.Duration(attempt) * time.Second)
 		} else {
 			break
@@ -240,10 +248,10 @@ func downloadAndUploadPackage(ctx context.Context, config *Config, chain SyncCha
 	return checkPackageHash(ctx, chain, pkg, version, config.Timeout)
 }
 
-func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, timeoutConfig TimeoutConfig) error {
+func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, timeoutConfig TimeoutConfig) (error, int) {
 	parsedURL, err := url.Parse(URL)
 	if err != nil {
-		return fmt.Errorf("failed to parse url: %s", err)
+		return fmt.Errorf("failed to parse url: %s", err), 0
 	}
 	baseURL := parsedURL.Scheme + "://" + parsedURL.Host
 
@@ -252,7 +260,7 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 	req, err := http.NewRequestWithContext(ctx, "GET", URL, nil)
 	req.Header.Set("X-ApiKey", chain.APIKey)
 	if err != nil {
-		return err
+		return err, 0
 	}
 
 	client := &http.Client{
@@ -262,27 +270,27 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 	resp, err := client.Do(req)
 	defer resp.Body.Close()
 
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download %s. Status: %d", filepath.Base(filePath), resp.StatusCode)
+	if err != nil || resp.StatusCode != 200 {
+		return fmt.Errorf("failed to download %s. Status: %d", filepath.Base(filePath), resp.StatusCode), resp.StatusCode
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 	contentLength := resp.Header.Get("Content-Length")
 
 	if !strings.Contains(contentType, "application") {
-		return fmt.Errorf("invalid content type: %s", contentType)
+		return fmt.Errorf("invalid content type: %s", contentType), resp.StatusCode
 	}
 	if contentLength == "" || contentLength == "0" {
-		return fmt.Errorf("invalid content length: %s", contentLength)
+		return fmt.Errorf("invalid content length: %s", contentLength), resp.StatusCode
 	}
 
-	if resp.StatusCode == http.StatusOK {
+	if resp.StatusCode == 200 {
 
 		dir := filepath.Dir(filePath)
 		err := os.MkdirAll(dir, os.ModePerm)
 		if err != nil {
 			fmt.Println("Error creating directories:", err)
-			return err
+			return err, resp.StatusCode
 		}
 
 		if *debug {
@@ -292,7 +300,7 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 		out, err := os.Create(filePath)
 		if err != nil {
 			fmt.Println("Error creating file:", err)
-			return err
+			return err, resp.StatusCode
 		}
 
 		if *debug {
@@ -305,30 +313,30 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 		fileInfo, err := io.Copy(multiWriter, resp.Body)
 		if err != nil {
 			log.Error().Err(err).Str("url", baseURL).Str("Action", "Download").Msgf("Failed to copy response body")
-			return err
+			return err, resp.StatusCode
 		}
 
 		out.Close()
 		sha1Hash := fmt.Sprintf("%x", hasher.Sum(nil))
 		fileSizeMB := float64(fileInfo) / (1024 * 1024)
 		log.Info().Str("url", baseURL).Str("feed", chain.Feed).Msgf("Success download %s. File Size: %.2f MB. sha1: %s", strings.TrimPrefix(filePath, "packages\\"), fileSizeMB, sha1Hash)
-		return nil
+		return nil, resp.StatusCode
 	}
-	return err
+	return err, resp.StatusCode
 
 }
 
-func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, timeoutConfig TimeoutConfig) error {
+func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, timeoutConfig TimeoutConfig) (error, int) {
 	parsedURL, err := url.Parse(URL)
 	if err != nil {
-		return fmt.Errorf("failed to parse url: %s", err)
+		return fmt.Errorf("failed to parse url: %s", err), 0
 	}
 	baseURL := parsedURL.Scheme + "://" + parsedURL.Host
 
 	log.Info().Str("url", baseURL).Str("feed", chain.Feed).Str("Action", "Upload").Msgf("Upload package %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 	file, err := os.Open(filePath)
 	if err != nil {
-		return err
+		return err, 0
 	}
 	defer file.Close()
 
@@ -345,17 +353,17 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 
 		part, err := writer.CreateFormFile("package", filepath.Base(filePath))
 		if err != nil {
-			return fmt.Errorf("failed to create form file: %w", err)
+			return fmt.Errorf("failed to create form file: %w", err), 0
 		}
 
 		_, err = io.Copy(part, file)
 		if err != nil {
-			return fmt.Errorf("failed to copy file: %w", err)
+			return fmt.Errorf("failed to copy file: %w", err), 0
 		}
 
 		err = writer.Close()
 		if err != nil {
-			return fmt.Errorf("failed to close writer: %w", err)
+			return fmt.Errorf("failed to close writer: %w", err), 0
 		}
 
 		req, err = http.NewRequestWithContext(ctx, "PUT", URL, &requestBody)
@@ -366,7 +374,7 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 
 	req.Header.Add("X-ApiKey", chain.APIKey)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err), 0
 	}
 
 	resp, err := client.Do(req)
@@ -383,17 +391,17 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 		}
 	}(resp.Body)
 
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("failed to upload %s. Status: %d", filepath.Base(filePath), resp.StatusCode)
+	if err != nil || resp.StatusCode != 201 {
+		return fmt.Errorf("failed to upload %s. Status: %d", filepath.Base(filePath), resp.StatusCode), resp.StatusCode
 	}
 
-	if resp.StatusCode == http.StatusCreated {
+	if resp.StatusCode == 201 {
 		log.Info().Str("url", baseURL).Str("feed", chain.Feed).Str("Action", "Upload").Msgf("Success upload: for file %s", strings.TrimSuffix(strings.TrimPrefix(filePath, "packages\\"), ".upack"))
 		err = os.Remove(filePath)
-		return nil
+		return nil, resp.StatusCode
 	}
 
-	return err
+	return err, resp.StatusCode
 }
 
 func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version string, timeoutConfig TimeoutConfig) (error, int) {
@@ -407,7 +415,7 @@ func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version str
 		Timeout: time.Duration(timeoutConfig.WebRequestTimeout) * time.Second,
 	}
 
-	log.Debug().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("Create delete request. File: %s/%s:%s", group, name, version)
+	log.Debug().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("Create delete request. Package: %s/%s:%s", group, name, version)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", URL, nil)
 	req.Header.Add("X-ApiKey", apikey)
@@ -429,22 +437,12 @@ func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version str
 		}
 	}(resp.Body)
 
-	if resp.StatusCode == 403 {
-		log.Info().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("403 add delete permission to apiKey")
-		return nil, resp.StatusCode
-	}
-
-	if resp.StatusCode == 429 {
-		log.Info().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("Delete reqest rate limit was exeed. Skip retention")
-		return nil, resp.StatusCode
-	}
-
-	if err != nil || resp.StatusCode != http.StatusOK {
+	if err != nil || resp.StatusCode != 200 {
 		log.Debug().Str("Action", "Delete").Msgf("Delete response body: %s", bodyString)
 		return fmt.Errorf("failed to delete %s/%s:%s", group, name, version), resp.StatusCode
 	}
 
-	if resp.StatusCode == http.StatusOK {
+	if resp.StatusCode == 200 {
 		log.Info().Str("url", baseURL).Str("feed", feed).Str("Action", "Delete").Msgf("Success delete: for file %s/%s:%s", group, name, version)
 		return nil, resp.StatusCode
 	}
@@ -487,12 +485,21 @@ func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version
 		log.Warn().Msgf("File %s/%s:%s hash does not match, delete it", pkg.Group, pkg.Name, version)
 		for attempt := 1; attempt <= timeoutConfig.MaxRetries; attempt++ {
 			log.Warn().Msgf("Attempt %d to delete %s/%s:%s", attempt, pkg.Group, pkg.Name, version)
-			err, _ := deleteFile(ctx, deleteURL, chain.Destination.APIKey, chain.Destination.Feed, pkg.Group, pkg.Name, version, timeoutConfig)
+			err, statusCode := deleteFile(ctx, deleteURL, chain.Destination.APIKey, chain.Destination.Feed, pkg.Group, pkg.Name, version, timeoutConfig)
+			switch statusCode {
+			case 429:
+				log.Info().Str("feed", chain.Destination.Feed).Str("Action", "Delete").Msgf("Delete reqest rate limit was exeed. Skip retention")
+				return nil
+			case 403:
+				log.Info().Str("feed", chain.Destination.Feed).Str("Action", "Delete").Msgf("Add \"delete\" permission to apiKey")
+				return nil
+			}
 			if err != nil {
 				log.Error().Err(err).Msgf("Failed to delete %s (attempt: %d)", *savePath, attempt)
 				time.Sleep(5 * time.Duration(attempt) * time.Second)
-			} else {
-				break
+			}
+			if attempt == timeoutConfig.MaxRetries {
+				return fmt.Errorf("failed to delete %s", *savePath)
 			}
 		}
 	}
