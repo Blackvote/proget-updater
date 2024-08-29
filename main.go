@@ -96,7 +96,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout.SyncTimeout)*time.Second)
 	defer cancel()
 
-	log.Debug().Msg("Chain sync loop start")
+	log.Debug().Msgf("Chain sync loop start. Found %d chains", len(config.SyncChain))
 	for _, chain := range config.SyncChain {
 		log.Debug().Msg("Parsing url")
 		_, err := url.ParseRequestURI(chain.Source.URL)
