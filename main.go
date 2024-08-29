@@ -88,11 +88,6 @@ func run() error {
 		log.Fatal().Err(err).Msg("Failed to read config")
 	}
 
-	err = validateConfig(config)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Invalid configuration")
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout.SyncTimeout)*time.Second)
 	defer cancel()
 

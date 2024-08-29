@@ -81,7 +81,13 @@ func readConfig(configFile string) (*Config, error) {
 		config.SyncChain[i].Source.Type = config.SyncChain[i].Type
 		config.SyncChain[i].Destination.Type = config.SyncChain[i].Type
 	}
-	log.Debug().Msg("Config file read")
+	log.Debug().Msg("Config file read. Validating")
+
+	err = validateConfig(&config)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Invalid configuration")
+	}
+
 	return &config, nil
 }
 
@@ -114,7 +120,7 @@ func setupLogging(logFilePath string) (*os.File, error) {
 }
 
 func createDeleteDirectoryContents(dir string) error {
-	log.Debug().Msg("Check for creating directory")
+	log.Debug().Msg("Check for creating temporary packages directory")
 	_, err := os.Stat(dir)
 	if os.IsNotExist(err) {
 		err := os.Mkdir(dir, 0777)
@@ -126,7 +132,7 @@ func createDeleteDirectoryContents(dir string) error {
 	} else {
 	}
 
-	log.Debug().Msg("Directory exists")
+	log.Debug().Msg("Temporary packages directory exists")
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return err
@@ -144,7 +150,7 @@ func createDeleteDirectoryContents(dir string) error {
 			return err
 		}
 	}
-	log.Debug().Msg("Directory removed")
+	log.Debug().Msg("Temporary packages directory removed")
 	return nil
 }
 
@@ -158,7 +164,6 @@ func cleanURL(url string) string {
 }
 
 func validateConfig(config *Config) error {
-	log.Debug().Msg("Validating config")
 	var errorMessages []string
 
 	if config.ProceedPackageLimit <= 0 {
@@ -181,6 +186,9 @@ func validateConfig(config *Config) error {
 		errorMessages = append(errorMessages, "invalid MaxRetries: must be greater than 0")
 	}
 
+	if len(config.SyncChain) <= 0 {
+		errorMessages = append(errorMessages, fmt.Sprintf("found 0 syncChains"))
+	}
 	for i, chain := range config.SyncChain {
 		if chain.Source.URL == "" {
 			errorMessages = append(errorMessages, fmt.Sprintf("source URL cannot be empty for chain %d", i+1))
