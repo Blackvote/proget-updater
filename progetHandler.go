@@ -19,6 +19,7 @@ import (
 )
 
 func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig TimeoutConfig) ([]Package, error) {
+	log.Debug().Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msg("Getting packages")
 	var (
 		url      string
 		packages []Package
@@ -106,6 +107,7 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 }
 
 func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPackages []Package) ([]Package, error) {
+	log.Debug().Str("url", chain.Destination.URL).Str("feed", chain.Destination.Feed).Msg("Work with packages array")
 	sourcePackageMap := make(map[string]map[string]bool)
 	for _, pkg := range sourcePackages {
 		key := fmt.Sprintf("%s:%s", pkg.Group, pkg.Name)
@@ -161,7 +163,7 @@ func getPackagesToSync(config *Config, chain SyncChain, sourcePackages, destPack
 			}
 		}
 	}
-
+	log.Debug().Str("url", chain.Destination.URL).Str("feed", chain.Destination.Feed).Msg("Slicing packages array")
 	packagesToSync := make([]Package, 0, len(packagesToSyncMap))
 	for _, pkg := range packagesToSyncMap {
 		packagesToSync = append(packagesToSync, *pkg)

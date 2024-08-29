@@ -81,6 +81,7 @@ func readConfig(configFile string) (*Config, error) {
 		config.SyncChain[i].Source.Type = config.SyncChain[i].Type
 		config.SyncChain[i].Destination.Type = config.SyncChain[i].Type
 	}
+	log.Debug().Msg("Config file read")
 	return &config, nil
 }
 
@@ -108,11 +109,12 @@ func setupLogging(logFilePath string) (*os.File, error) {
 	}
 
 	log.Logger = logger
+	log.Debug().Msg("Logger initialized")
 	return logFile, nil
 }
 
 func createDeleteDirectoryContents(dir string) error {
-
+	log.Debug().Msg("Check for creating directory")
 	_, err := os.Stat(dir)
 	if os.IsNotExist(err) {
 		err := os.Mkdir(dir, 0777)
@@ -124,11 +126,13 @@ func createDeleteDirectoryContents(dir string) error {
 	} else {
 	}
 
+	log.Debug().Msg("Directory exists")
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return err
 	}
 
+	log.Debug().Msgf("Found %d files", len(files))
 	for _, file := range files {
 		filePath := filepath.Join(dir, file.Name())
 		if file.IsDir() {
@@ -140,7 +144,7 @@ func createDeleteDirectoryContents(dir string) error {
 			return err
 		}
 	}
-
+	log.Debug().Msg("Directory removed")
 	return nil
 }
 
@@ -154,6 +158,7 @@ func cleanURL(url string) string {
 }
 
 func validateConfig(config *Config) error {
+	log.Debug().Msg("Validating config")
 	var errorMessages []string
 
 	if config.ProceedPackageLimit <= 0 {
@@ -198,5 +203,6 @@ func validateConfig(config *Config) error {
 	if len(errorMessages) > 0 {
 		return fmt.Errorf("configuration validation errors: \n%s", strings.Join(errorMessages, "\n"))
 	}
+	log.Debug().Msg("Configuration validation successful")
 	return nil
 }
