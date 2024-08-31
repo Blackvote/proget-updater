@@ -2,23 +2,23 @@
 ## P.S - каждая строка начинается в lowerCase
 syncChain:
   - source: # Описание Source PG/Feed, пакеты отсюда будут сравниваться с DEST PG/Feed
-      url: "http://localhost" # URL адрес инстанса Source PG
-      apiKey: "30a4c00a5ce95d038577" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
+      url: "http://localhost:8081" # URL адрес инстанса Source PG
+      apiKey: "30a4c00a5ce95d038577" # API_KEY с правами на фид описанный ниже (View/Download, Add/Repackage, Overwrite/Delete)
       feed: "first-feed" # Имя Source Feed
     destination: # Описание DEST PG/Feed, пакеты отсюда будут сравниваться с Source PG/Feed
-      url: "http://localhost:8080" # URL адрес инстанса Dest PG
-      apiKey: "51960d3631983c7f7bcf2" # API_KEY с правами на фид описанный ниже ( View/Download,Add/Repackage,Overwrite/Delete )
+      url: "http://localhost:8083" # URL адрес инстанса Dest PG
+      apiKey: "51960d3631983c7f7bcf2" # API_KEY с правами на фид описанный ниже (View/Download, Add/Repackage, Overwrite/Delete)
       feed: "second-feed" # Имя Dest Feed
     type: "upack" # тип синхронизируемого фида. Доступные "nuget", "upack", "assets".
 
   - source: # Тоже что и выше.
       url: "http://localhost:8081"
-      apiKey: "0dae18212a6f41ec8e2aaae8624614cf91d63205"
+      apiKey: "0dae18212a6f41ec8e2aaa"
       feed: "first-sec-feed"
     destination:
       url: "http://localhost:8083"
-      apiKey: "28e868cd710575c58881cf24ba358d9ecfb93af7"
-      feed: "third-sec-feed"
+      apiKey: "28e868cd710575c58881cf2"
+      feed: "sec-sec-feed"
     type: "nuget"
 
 # тут можно добавить ещё несколько цепочек синхронизации

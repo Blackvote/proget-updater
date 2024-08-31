@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"io"
 	"mime/multipart"
@@ -14,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -49,9 +51,16 @@ func getPackages(ctx context.Context, progetConfig ProgetConfig, timeoutConfig T
 		bodyString := string(body)
 		log.Debug().Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msgf("Get packaget responce body: %s", bodyString)
 		if err != nil || resp.StatusCode != http.StatusOK {
-			log.Error().Err(err).Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msgf("Attempt %d failed to get package. Status: %s", attempt, resp.Status)
-			time.Sleep(5 * time.Duration(attempt) * time.Second)
-			continue
+			if resp != nil {
+				log.Error().Err(err).Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msgf("Attempt %d failed to get package. Status: %s", attempt, resp.Status)
+				time.Sleep(5 * time.Duration(attempt) * time.Second)
+				continue
+			} else {
+				log.Error().Err(err).Str("url", progetConfig.URL).Str("feed", progetConfig.Feed).Msgf("Attempt %d failed to get package. Status is empty it nay be deadline", attempt)
+				time.Sleep(5 * time.Duration(attempt) * time.Second)
+				continue
+			}
+
 		}
 
 		if resp.StatusCode == http.StatusOK {
@@ -270,6 +279,11 @@ func downloadFile(ctx context.Context, URL, filePath string, chain ProgetConfig,
 	}
 
 	resp, err := client.Do(req)
+	if resp != nil {
+		HttpRequestsTotal.With(prometheus.Labels{"action": "get_packages", "code": strconv.Itoa(resp.StatusCode), "method": req.Method}).Inc()
+	} else {
+		HttpRequestsTotal.With(prometheus.Labels{"action": "get_packages", "code": "deadline", "method": req.Method}).Inc()
+	}
 	defer resp.Body.Close()
 
 	if err != nil || resp.StatusCode != 200 {
@@ -380,6 +394,11 @@ func uploadFile(ctx context.Context, URL, filePath string, chain ProgetConfig, t
 	}
 
 	resp, err := client.Do(req)
+	if resp != nil {
+		HttpRequestsTotal.With(prometheus.Labels{"action": "get_packages", "code": strconv.Itoa(resp.StatusCode), "method": req.Method}).Inc()
+	} else {
+		HttpRequestsTotal.With(prometheus.Labels{"action": "get_packages", "code": "deadline", "method": req.Method}).Inc()
+	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error().Str("Action", "Upload").Err(err).Msgf("Failed to read response body")
@@ -426,6 +445,12 @@ func deleteFile(ctx context.Context, URL, apikey, feed, group, name, version str
 	}
 
 	resp, err := client.Do(req)
+
+	if resp != nil {
+		HttpRequestsTotal.With(prometheus.Labels{"action": "get_packages", "code": strconv.Itoa(resp.StatusCode), "method": req.Method}).Inc()
+	} else {
+		HttpRequestsTotal.With(prometheus.Labels{"action": "get_packages", "code": "deadline", "method": req.Method}).Inc()
+	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to read response body")
@@ -506,6 +531,7 @@ func checkPackageHash(ctx context.Context, chain SyncChain, pkg Package, version
 		}
 	}
 	log.Warn().Msgf("%s/%s:%s hash match", pkg.Group, pkg.Name, version)
+	PackageProceedTotal.With(prometheus.Labels{"feed": chain.Destination.Feed}).Inc()
 	return nil
 }
 
@@ -621,8 +647,13 @@ func fetchAssets(client *http.Client, url string, parentPath, apiKey string) ([]
 	}
 
 	req.Header.Add("X-ApiKey", apiKey)
-
 	resp, err := client.Do(req)
+	if resp != nil {
+		HttpRequestsTotal.With(prometheus.Labels{"action": "get_packages", "code": strconv.Itoa(resp.StatusCode), "method": req.Method}).Inc()
+	} else {
+		HttpRequestsTotal.With(prometheus.Labels{"action": "get_packages", "code": "deadline", "method": req.Method}).Inc()
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +699,17 @@ func fetchAssets(client *http.Client, url string, parentPath, apiKey string) ([]
 func apiCall(client *http.Client, req *http.Request) (*http.Response, []byte, error) {
 
 	resp, err := client.Do(req)
+	if resp != nil {
+		HttpRequestsTotal.With(prometheus.Labels{"action": "get_packages", "code": strconv.Itoa(resp.StatusCode), "method": req.Method}).Inc()
+	} else {
+		HttpRequestsTotal.With(prometheus.Labels{"action": "get_packages", "code": "deadline", "method": req.Method}).Inc()
+	}
+
 	if err != nil {
+		return nil, nil, err
+	}
+
+	if resp == nil {
 		return nil, nil, err
 	}
 	log.Debug().Str("url", req.URL.String()).Msgf("get resp %d", resp.StatusCode)

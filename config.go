@@ -209,7 +209,7 @@ func validateConfig(config *Config) error {
 	}
 
 	if len(errorMessages) > 0 {
-		return fmt.Errorf("configuration validation errors: \n%s", strings.Join(errorMessages, "\n"))
+		return fmt.Errorf("configuration validation errors: %s", strings.Join(errorMessages, ";"))
 	}
 	log.Debug().Msg("Configuration validation successful")
 	return nil

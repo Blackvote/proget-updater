@@ -4,7 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -19,6 +22,8 @@ var (
 	savePath    = new(string)
 	logFilePath = new(string)
 	debug       = new(bool)
+	metrics     = new(bool)
+	metricsPort = new(int)
 )
 
 func init() {
@@ -26,7 +31,24 @@ func init() {
 	flag.StringVar(savePath, "p", "./packages", "path to save downloaded packages")
 	flag.StringVar(logFilePath, "l", "", "path to logfile")
 	flag.BoolVar(debug, "debug", false, "debug mode")
+	flag.BoolVar(metrics, "metrics", false, "enable metrics publish")
+	flag.IntVar(metricsPort, "metrics-port", 9464, "port for publish metric. Default 9464")
 	flag.Parse()
+
+	if *metrics {
+		prometheus.MustRegister(HttpRequestsTotal)
+		prometheus.MustRegister(PackageProceedTotal)
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			log.Info().Msgf("Starting metrics server on :%d", *metricsPort)
+			port := fmt.Sprintf(":%d", *metricsPort)
+			err := http.ListenAndServe(port, nil)
+			if err != nil {
+				return
+			}
+		}()
+	}
+
 }
 
 func main() {
@@ -42,6 +64,10 @@ func main() {
 
 	for {
 		config, err := readConfig(*configFile)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to read config")
+		}
+
 		if config.Retention.Enabled && !config.Retention.DryRun {
 			if config.ProceedPackageVersion > config.Retention.VersionLimit {
 				config.ProceedPackageVersion = config.Retention.VersionLimit
@@ -56,26 +82,28 @@ func main() {
 			log.Info().Msg("Directory contents deleted successfully")
 		}
 
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to read config")
-		}
-
 		go func() {
 			<-stop
-			log.Fatal().Msg("Received stop signal.")
+			log.Info().Msg("Received stop signal, exiting.")
+			os.Exit(0)
 		}()
 
 		err = run()
 		if err != nil {
-			log.Error().Err(err).Msgf("Error syncing. Pause %d seconds", config.Timeout.IterationTimeout)
+			log.Error().Err(err).Msgf("Error syncing. Pausing for %d seconds", config.Timeout.IterationTimeout)
+		}
+
+		if *metrics {
+			HttpRequestsTotal.Reset()
+			PackageProceedTotal.Reset()
 		}
 
 		select {
 		case <-stop:
-			log.Info().Msg("Received stop signal, close loop.")
+			log.Info().Msg("Received stop signal, closing loop.")
 			return
 		case <-time.After((time.Duration(config.Timeout.IterationTimeout) / 2) * time.Second):
-			log.Info().Msgf("Starting new iteration after pause. %d seconds", config.Timeout.IterationTimeout)
+			log.Info().Msgf("Starting new iteration after pause of %d seconds", config.Timeout.IterationTimeout)
 		}
 	}
 }
@@ -93,7 +121,7 @@ func run() error {
 
 	log.Debug().Msgf("Chain sync loop start. Found %d chains", len(config.SyncChain))
 	for _, chain := range config.SyncChain {
-		log.Debug().Msg("Parsing url")
+		log.Debug().Msg("Parsing URL")
 		_, err := url.ParseRequestURI(chain.Source.URL)
 		if err != nil {
 			log.Error().Err(err).Msg("Invalid source URI")
@@ -101,7 +129,7 @@ func run() error {
 
 		_, err = url.ParseRequestURI(chain.Destination.URL)
 		if err != nil {
-			log.Error().Err(err).Msg("Invalid dest URI")
+			log.Error().Err(err).Msg("Invalid destination URI")
 		}
 
 		select {
@@ -127,7 +155,7 @@ func run() error {
 				continue
 			}
 
-			log.Debug().Msgf("syncPackage = %d", len(syncPackages))
+			log.Debug().Msgf("syncPackages = %d", len(syncPackages))
 
 			if len(syncPackages) > config.ProceedPackageLimit {
 				syncPackages = syncPackages[:config.ProceedPackageLimit]
@@ -151,7 +179,6 @@ func run() error {
 			log.Info().Str("url", chain.Destination.URL).Msg(packageList.String())
 
 			var wg sync.WaitGroup
-
 			errCh := make(chan error, len(syncPackages))
 
 			for _, pkg := range syncPackages {
@@ -187,7 +214,7 @@ func run() error {
 			}
 		}
 	}
-	log.Info().Msgf("Pause %d seconds", config.Timeout.IterationTimeout)
+	log.Info().Msgf("Pausing for %d seconds", config.Timeout.IterationTimeout)
 	select {
 	case <-ctx.Done():
 		log.Warn().Msgf("Timeout or cancel signal received, exiting run. Timeout: %d seconds", config.Timeout.SyncTimeout)
