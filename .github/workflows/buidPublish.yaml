@@ -14,6 +14,9 @@ jobs:
       id: release-please
       with:
         release-type: simple
+    - name: echo
+      run: |
+        echo "release_created: ${{ steps.release-please.outputs.release_created }}"
 
   build:
     needs: release-please
