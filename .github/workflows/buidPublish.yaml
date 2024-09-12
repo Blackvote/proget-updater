@@ -15,7 +15,7 @@ jobs:
       with:
         config-file: release-please-config.json
         manifest-file: .release-please-manifest.json
-        default-branck: feat-release-please
+        default-branch: feat-release-please
 
   build:
     needs: release-please
