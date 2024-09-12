@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/Blackvote/proget-updater/compare/v0.3.6...v0.3.7) (2024-09-12)
+
+
+### Bug Fixes
+
+* Update buidPublish.yaml ([efe8202](https://github.com/Blackvote/proget-updater/commit/efe8202e94e4db574fd324866a8d10f13773a384))
+
 ## [0.3.6](https://github.com/Blackvote/proget-updater/compare/v0.3.5...v0.3.6) (2024-09-12)
 
 
