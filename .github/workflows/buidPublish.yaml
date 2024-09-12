@@ -17,7 +17,7 @@ jobs:
 
   build:
     needs: release-please
-    if: ${{ steps.release.outputs.release_created }}
+    if: ${{ steps.release-please.outputs.release_created }}
     runs-on:
       - ubuntu-latest
     strategy:
