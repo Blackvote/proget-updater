@@ -1,4 +1,4 @@
-name: Build and Publish Updater_go from 
+name: Build and Publish Updater_go
 
 on:
   push:
