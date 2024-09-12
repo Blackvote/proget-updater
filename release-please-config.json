@@ -1,0 +1,15 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "include-v-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "pkg.json",
+          "jsonpath": "$.details.version"
+        }
+      ]
+    }
+  }
+}
