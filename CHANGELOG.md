@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/Blackvote/proget-updater/compare/v0.2.0...v0.3.0) (2024-09-12)
+
+
+### Features
+
+* add output to buidPublish.yaml ([#5](https://github.com/Blackvote/proget-updater/issues/5)) ([801fc60](https://github.com/Blackvote/proget-updater/commit/801fc60f41f7f50821ee882da416165d8792b2f2))
+
 ## [0.2.0](https://github.com/Blackvote/proget-updater/compare/v0.1.0...v0.2.0) (2024-09-12)
 
 
