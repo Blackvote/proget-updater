@@ -137,3 +137,5 @@ Help: "Total number of HTTP requests by one loop categorized by status code and 
 Общее кол-во успешно обработанных пакетов.
 Name: "updater_package_proceed_total",
 Help: "Total number of package successfully proceeded by one loop."
+
+TODO: translate
