@@ -1,12 +1,23 @@
-name: Build and Publish Updater_go
+name: Build and Publish Updater_go from 
 
 on:
   push:
-    tags:
-      - '*'
+    branches:
+      - feat-release-please
 
 jobs:
+  release-please:
+    runs-on:
+      - ubuntu-latest
+    steps:
+    - uses: googleapis/release-please-action@v4
+      id: release-please
+      with:
+        config-file: release-please-config.json
+
   build:
+    needs: release-please
+    if: ${{ steps.release.outputs.release_created }}
     runs-on:
       - ubuntu-latest
     strategy:
@@ -28,9 +39,7 @@ jobs:
     - name: Build
       run: |
         mkdir -p build
-        if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; else EXT=""; fi
-        GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/updater_${{ github.ref_name }}_${{ matrix.goos }}$EXT
-
+        GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/updater_${{ github.ref_name }}_${{ matrix.goos }}${{ matrix.goos == 'windows' && '.exe' || '' }}
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
@@ -38,45 +47,23 @@ jobs:
         name: updater_${{ github.ref_name }}_${{ matrix.goos }}
         path: build/updater_${{ github.ref_name }}_${{ matrix.goos }}${{ matrix.goos == 'windows' && '.exe' || '' }}
 
-  release:
-    runs-on:
-      - ubuntu-latest
-    needs: build
-    steps:
-    - uses: googleapis/release-please-action@v4
-      id: release
-      with:
-        config-file: release-please-config.json
-
     - name: Checkout code
-      if: ${{ steps.release.outputs.release_created }}
       uses: actions/checkout@v2
 
     - name: Download Linux Artifact
-      if: ${{ steps.release.outputs.release_created }}
       uses: actions/download-artifact@v2
       with:
         name: updater_${{ github.ref_name }}_linux
         path: .
 
     - name: Download Windows Artifact
-      if: ${{ steps.release.outputs.release_created }}
       uses: actions/download-artifact@v2
       with:
         name: updater_${{ github.ref_name }}_windows
         path: .
         
-    - uses: ncipollo/release-action@v1
-      if: ${{ steps.release.outputs.release_created }}
-      with:
-        artifacts: |
-          updater_${{ github.ref_name }}_linux
-          updater_${{ github.ref_name }}_windows.exe
-        token: ${{ secrets.GITHUB_TOKEN }}
-        name: "Release ${{ github.ref_name }}"
-        tag: ${{ github.ref_name }}
-        body: |
-          Release of updater version ${{ github.ref_name }}.
-          Dont forget to create "config.yml" (./config.example.yml).
-        draft: false
-        prerelease: false
+    - name: Upload Release Artifact
+      if: ${{ steps.release-please.outputs.release_created }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: gh release upload ${{ steps.release-please.outputs.tag_name }} ./artifact/some-build-artifact.zip
