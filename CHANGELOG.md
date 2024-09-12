@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/Blackvote/proget-updater/compare/v0.3.0...v0.3.1) (2024-09-12)
+
+
+### Bug Fixes
+
+* Update README.md ([15be2cc](https://github.com/Blackvote/proget-updater/commit/15be2ccb44bdfc718aa63b468d61f2bc8e70a70d))
+
 ## [0.3.0](https://github.com/Blackvote/proget-updater/compare/v0.2.0...v0.3.0) (2024-09-12)
 
 
