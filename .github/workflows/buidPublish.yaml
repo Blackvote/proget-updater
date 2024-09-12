@@ -3,7 +3,7 @@ name: Build and Publish Updater_go
 on:
   push:
     branches:
-      - feat-release-please
+      - main
 
 jobs:
   release-please:
