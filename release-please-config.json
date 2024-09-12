@@ -3,7 +3,6 @@
     ".": {
       "release-type": "go",
       "include-v-in-tag": true,
-      ]
     }
   }
 }
