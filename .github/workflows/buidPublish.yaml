@@ -18,9 +18,17 @@ jobs:
       run: |
         echo "release_created: ${{ steps.release-please.outputs.release_created }}"
 
+  echo:
+    needs: release-please
+    runs-on: ubuntu-latest
+    steps:
+      - name: echo
+        run: |
+          echo "release_created: ${{ needs.release-please.outputs.release_created }}"
+
   build:
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on:
       - ubuntu-latest
     strategy:
