@@ -55,24 +55,6 @@ jobs:
       run: |
         mkdir -p build
         GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/updater_${{ github.ref_name }}_${{ matrix.goos }}${{ matrix.goos == 'windows' && '.exe' || '' }}
-
-    # - name: Upload Artifact
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #     name: updater_${{ github.ref_name }}_${{ matrix.goos }}
-    #     path: build/updater_${{ github.ref_name }}_${{ matrix.goos }}${{ matrix.goos == 'windows' && '.exe' || '' }}
-
-    # - name: Download Linux Artifact
-    #   uses: actions/download-artifact@v4
-    #   with:
-    #     name: updater_${{ github.ref_name }}_linux
-    #     path: .
-
-    # - name: Download Windows Artifact
-    #   uses: actions/download-artifact@v4
-    #   with:
-    #     name: updater_${{ github.ref_name }}_windows
-    #     path: .
         
     - name: Upload Release Artifact
       env:
